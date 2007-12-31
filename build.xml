@@ -1,0 +1,395 @@
+<project name="bruce" default="compile" basedir=".">
+    <!-- $Id: build.xml 72521 2007-06-27 15:56:40Z lball $ -->
+
+    <property file="build.properties"/>
+    <property file="postgres.properties"/>
+
+    <property name="dir.schema" location="schema"/>
+    <property name="dir.test.data" location="test/data"/>
+
+    <!-- override the generic build file's classpath.  it includes waaaayyy too much stuff
+         This classpath override has to be AFTER the import of generic-build.xml.
+	 generic-build.xml (as of this writing) re-imports build.properties, which sets
+	 classpath, and thus would override the override if it was BEFORE the import. -->
+    <path id="classes.path">
+        <pathelement location="${dir.classes}"/>
+    </path>
+    <path id="classpath">
+        <pathelement location="${dir.test.classes}"/>
+        <path refid="classes.path"/>
+        <fileset dir="${dir.lib}">
+            <include name="**/*.jar"/>
+        </fileset>
+    </path>
+
+    <taskdef name="hibernatetool" classname="org.hibernate.tool.ant.HibernateToolTask"
+        classpathref="classpath"/>
+
+    <target name="make-hibernate-config">
+        <property name="hibernate.config" location="${dir.classes}/hibernate.cfg.xml"/>
+        <property name="hibernate.config.template" location="${dir.src}/hibernate.cfg.xml.template"/>
+        <copy file="${hibernate.config.template}" tofile="${hibernate.config}">
+            <filterset>
+              <filter token="DB_URI" value="${postgresql.URL}"/>
+              <filter token="DB_USERNAME" value="${user.name}"/>
+            </filterset>
+        </copy>
+    </target>
+
+    <target name="make-test-data">
+        <copy file="${dir.test.data}/admin-test-insert.xml.template" tofile="${dir.test.data}/admin-test-insert.xml">
+            <filterset>
+              <filter token="DB_PORT" value="${postgresql.port}"/>
+            </filterset>
+        </copy>
+        <copy file="${dir.test.data}/admin-test-setup.xml.template" tofile="${dir.test.data}/admin-test-setup.xml">
+            <filterset>
+              <filter token="DB_PORT" value="${postgresql.port}"/>
+            </filterset>
+        </copy>
+        <copy file="${dir.test.data}/admin-test-slave-from-backup.xml.template" tofile="${dir.test.data}/admin-test-slave-from-backup.xml">
+            <filterset>
+              <filter token="DB_PORT" value="${postgresql.port}"/>
+            </filterset>
+        </copy>
+        <copy file="${dir.test.data}/admin-test-insert.xml.template" tofile="${dir.test.data}/admin-test-swap-master-slave.xml">
+            <filterset>
+              <filter token="DB_PORT" value="${postgresql.port}"/>
+            </filterset>
+        </copy>
+        <copy file="${dir.test.data}/slave-status.xml.template" tofile="${dir.test.data}/slave-status.xml">
+            <filterset>
+              <filter token="DB_PORT" value="${postgresql.port}"/>
+            </filterset>
+        </copy>
+	<copy file="${dir.test.data}/includetable-regexp.xml.template" 
+	      tofile="${dir.test.data}/includetable-regexp-0.xml">
+	  <filterset>
+	    <filter token="INCLUDETABLE" value=""/>     
+	  </filterset>
+	</copy> 
+	<copy file="${dir.test.data}/includetable-regexp.xml.template" 
+	      tofile="${dir.test.data}/includetable-regexp-1.xml">
+	  <filterset>
+	    <filter token="INCLUDETABLE" value="1"/>     
+	  </filterset>
+	</copy> 
+	<copy file="${dir.test.data}/includetable-regexp.xml.template" 
+	      tofile="${dir.test.data}/includetable-regexp-27.xml">
+	  <filterset>
+	    <filter token="INCLUDETABLE" value="123456789112345678921234567"/>     
+	  </filterset>
+	</copy> 
+	<copy file="${dir.test.data}/includetable-regexp.xml.template" 
+	      tofile="${dir.test.data}/includetable-regexp-27.xml">
+	  <filterset>
+	    <filter token="INCLUDETABLE" value="123456789112345678921234567"/>     
+	  </filterset>
+	</copy> 
+	<copy file="${dir.test.data}/includetable-regexp.xml.template" 
+	      tofile="${dir.test.data}/includetable-regexp-255.xml">
+	  <filterset>
+	    <filter token="INCLUDETABLE" value="123456789112345678921234567893123456789041234567895123456789612345678971234567898123456789912345678911234567891123456789212345678931234567890412345678951234567896123456789712345678981234567899123456789212345678911234567892123456789312345678904123456789512345"/>
+	  </filterset>
+	</copy> 
+	<copy file="${dir.test.data}/includetable-regexp.xml.template" 
+	      tofile="${dir.test.data}/includetable-regexp-256.xml">
+	  <filterset>
+	    <filter token="INCLUDETABLE" value="1234567891123456789212345678931234567890412345678951234567896123456789712345678981234567899123456789112345678911234567892123456789312345678904123456789512345678961234567897123456789812345678991234567892123456789112345678921234567893123456789041234567895123456"/>
+	  </filterset>
+	</copy> 
+	<copy file="${dir.test.data}/includetable-regexp.xml.template" 
+	      tofile="${dir.test.data}/includetable-regexp-1256.xml">
+	  <filterset>
+	    <filter token="INCLUDETABLE" value="123456789112345678921234567893123456789041234567895123456789612345678971234567898123456789912345678911234567891123456789212345678931234567890412345678951234567896123456789712345678981234567899123456789212345678911234567892123456789312345678904123456789512345678961234567897123456789812345678991234567893123456789112345678921234567893123456789041234567895123456789612345678971234567898123456789912345678941234567891123456789212345678931234567890412345678951234567896123456789712345678981234567899123456789512345678911234567892123456789312345678904123456789512345678961234567897123456789812345678991234567896123456789112345678921234567893123456789041234567895123456789612345678971234567898123456789912345678971234567891123456789212345678931234567890412345678951234567896123456789712345678981234567899123456789812345678911234567892123456789312345678904123456789512345678961234567897123456789812345678991234567899123456789112345678921234567893123456789041234567895123456789612345678971234567898123456789912345678911234567891123456789212345678931234567890412345678951234567896123456789712345678981234567899123456789112345678911234567892123456789312345678904123456789512345678961234567897123456789812345678991234567892123456789112345678921234567893123456789041234567895123456"/>
+	  </filterset>
+	</copy> 
+    </target>
+
+<!-- 12345678911234567892123456789312345678904123456789512345678961234567897123456789812345678991234567891 -->
+
+
+    <target name="schemaexport" depends="compile, make-hibernate-config">
+        <echo message="Using PostgreSQL URL: ${postgresql.URL}"/>
+        <property name="hibernate.connection.url" value="${postgresql.URL}"/>
+        <hibernatetool destdir="${dir.schema}">
+            <annotationconfiguration configurationFile="${hibernate.config}"/>
+            <hbm2ddl
+                drop="true"
+                create="true"
+                export="true"
+                outputfilename="cluster-ddl.sql"
+                delimiter=";"
+                format="true"/>
+        </hibernatetool>
+        <copy file="${dir.schema}/cluster-ddl.sql" todir="${dir.classes}"/>
+        <copy file="${dir.schema}/replication-ddl.sql" todir="${dir.classes}"/>
+    </target>
+
+    <target name="clean" description="Cleans ${dir.classes}">
+        <delete dir="${dir.build}"/>
+        <delete dir="${dir.release}"/>
+    </target>
+
+    <!-- =============================================== -->
+    <!-- Compile package                                 -->
+    <!-- =============================================== -->
+    <target name="compile" description="Compiles java source">
+        <mkdir dir="${dir.classes}"/>
+        <copy todir="${dir.classes}">
+            <fileset dir="${dir.src}"
+                     includes="**/*.properties,**/*.xml,,**/*.template"
+                     excludes="**/*.java"
+                    />
+        </copy>
+        <javac srcdir="${dir.src}" destdir="${dir.classes}" debug="on">
+            <include name="**/*.java"/>
+            <classpath refid="classpath"/>
+            <compilerarg compiler="modern" value="-Xlint"></compilerarg>
+        </javac>
+    </target>
+
+    
+    <!-- =============================================== -->
+    <!-- Jar package                                     -->
+    <!-- =============================================== -->
+    <target name="jar" description="makes jar" depends="compile, compile-test, make-hibernate-config">
+        <mkdir dir="${dir.release}"/>
+        <jar destfile="${dir.release}/${jarfilename}" basedir="${dir.classes}">
+            <manifest>
+                <attribute name="Vendor" value="Vendare NetBlue, Inc"/>
+                <attribute name="Vendor-Id" value="com.netblue"/>
+                <attribute name="Implementation-Version" value="${bruce.version}"/>
+                <attribute name="Build-ID" value="${label}"/>
+                <attribute name="Build-Date" value="${cvstimestamp}"/>
+            </manifest>
+        </jar>
+        <jar destfile="${dir.release}/${testjarfilename}" basedir="${dir.test.classes}">
+            <manifest>
+                <attribute name="Vendor" value="Vendare NetBlue, Inc"/>
+                <attribute name="Vendor-Id" value="com.netblue"/>
+                <attribute name="Implementation-Version" value="${bruce.version}"/>
+                <attribute name="Build-ID" value="${label}"/>
+                <attribute name="Build-Date" value="${cvstimestamp}"/>
+            </manifest>
+        </jar>
+        <jar destfile="${dir.release}/${sourcejarfilename}" basedir="${dir.src}">
+            <manifest>
+                <attribute name="Vendor" value="Vendare NetBlue, Inc"/>
+                <attribute name="Vendor-Id" value="com.netblue"/>
+                <attribute name="Implementation-Version" value="${bruce.version}"/>
+                <attribute name="Build-ID" value="${label}"/>
+                <attribute name="Build-Date" value="${cvstimestamp}"/>
+            </manifest>
+        </jar>
+    </target>
+    
+    <target name="release" depends="clean, jar, test, docs">
+        <property name="dir.package" location="${dir.release}/bruce-${bruce.version}"/>
+        <mkdir dir="${dir.package}"/>
+        <copy todir="${dir.package}">
+            <fileset dir="." includes="LICENSE.TXT"/>
+        </copy>
+        <copy todir="${dir.package}">
+            <fileset dir="${dir.release}" includes="*.jar"/>
+        </copy>
+
+        <copy todir="${dir.release}">
+            <fileset dir="build" includes="coverage/**/*"/>
+            <fileset dir="docs" includes="javadoc/**/*"/>
+        </copy>
+	<copy todir="${dir.release}/junit">
+	  <fileset dir="build/junit-output/html" includes="**/*"/>
+	</copy>
+        <copy todir="${dir.package}">
+            <fileset dir="." includes="postgres.properties"/>
+            <fileset dir="." includes="csrc/**/*"/>
+            <fileset dir="." includes="bin/**/*"/>
+            <fileset dir="." includes="sample/**/*"/>
+            <fileset dir="." includes="stresstest/**/*"/>
+            <fileset dir=".">
+                <include name="schema/*.sql"/>
+                <exclude name="schema/unit-tests-ddl.sql"/>
+            </fileset>
+            <fileset dir=".">
+                <include name="lib/*.jar"/>
+                <include name="lib/hibernate/**/*.jar"/>
+                <include name="lib/activemq/**/*.jar"/>
+                <include name="lib/dbunit-2.2.jar"/>
+                <include name="lib/junit-4.1.jar"/>
+                <include name="lib/LICENSE.TXT"/>
+            </fileset>
+        </copy>
+<!--
+        <loadfile property="admin.options" srcfile="docs/com.netblue.bruce.admin.Options.html"/>
+        <copy todir="${dir.release}">
+            <fileset dir="." includes="docs/*.html"/>
+            <filterset >
+                <filter token="OPTIONS" value="${admin.options}"/>
+            </filterset>
+        </copy>
+-->
+
+        <tar compression="gzip" destfile="${dir.release}/bruce-${bruce.version}.tgz">
+	  <tarfileset dir="${dir.release}/" 
+	              filemode="755">
+            <include name="bruce-${bruce.version}/bin"/>
+	    <include name="bruce-${bruce.version}/bin/startup.sh"/>
+	    <include name="bruce-${bruce.version}/bin/shutdown.sh"/>
+	    <include name="bruce-${bruce.version}/bin/admin.sh"/>
+	  </tarfileset>
+	  <tarfileset dir="${dir.release}/">
+	    <include name="bruce-${bruce.version}/**/*"/>
+            <exclude name="bruce-${bruce.version}/bin"/>
+	    <exclude name="bruce-${bruce.version}/bin/startup.sh"/>
+	    <exclude name="bruce-${bruce.version}/bin/shutdown.sh"/>
+	    <exclude name="bruce-${bruce.version}/bin/admin.sh"/>
+	  </tarfileset>
+	</tar>
+        <delete dir="${dir.package}"/>
+        <delete file="${dir.release}/${jarfilename}"/>
+        <delete file="${dir.release}/${sourcejarfilename}"/>
+        <delete file="${dir.release}/${testjarfilename}"/>
+    </target>
+
+    <!-- =============================================== -->
+    <!-- Creates Java Doc                                -->
+    <!-- =============================================== -->
+    <target name="docs" description="Generates Javadoc">
+        <mkdir dir="${dir.docs}"/>
+        <javadoc packagenames="${jdoc.packages}"
+                 sourcepath="${dir.src}"
+                 destdir="${dir.docs}"
+                 author="true"
+                 version="true"
+                 use="true"
+                 windowtitle="${jdoc.title}">
+            <classpath refid="classpath"/>
+        </javadoc>
+    </target>
+
+    <!-- =============================================== -->
+    <!-- Compile tests                                   -->
+    <!-- =============================================== -->
+    <target name="compile-test" description="Compiles junit tests" depends="compile, make-hibernate-config">
+        <mkdir dir="${dir.test.classes}"/>
+        <copy todir="${dir.classes}">
+            <fileset dir="${dir.test}"
+                     includes="**/*.properties,**/*.xml,,**/*.template"
+                     excludes="**/*.java"
+                    />
+        </copy>
+        <javac srcdir="${dir.test}" destdir="${dir.test.classes}" debug="on">
+            <include name="**/*.java"/>
+            <classpath refid="classpath"/>
+            <compilerarg compiler="modern" value="-Xlint"></compilerarg>
+        </javac>
+    </target>
+    
+    <target name="test"
+            depends="jar, compile-test, make-test-data"
+            description="overrides the generic test target">
+
+        <!-- Load the test schema and setup system properties for test data -->
+        <echo message="Loading test schema"/>
+        <antcall target="schemaexport"/>
+        <mkdir dir="${dir.junit.output}/xml"/>
+        <property name="dir.test.data" location="test/data"/>
+        <property name="dir.schema" location="schema"/>
+        <property name="dir.coverage" location="${dir.build}/coverage"/>
+
+        <!-- Prime the code coverage task -->
+        <!-- directory that contains emma.jar and emma_ant.jar: -->
+        <property name="emma.dir" value="${dir.lib}/emma"/>
+        <path id="emma.lib">
+            <pathelement location="${emma.dir}/emma.jar"/>
+            <pathelement location="${emma.dir}/emma_ant.jar"/>
+        </path>
+
+        <taskdef resource="emma_ant.properties" classpathref="emma.lib"/>
+        <property name="emma.enabled" value="true"/>
+
+
+        <!-- Instrument our classes -->
+        <property name="dir.instrumented.classes" location="${dir.build}/instrumented-classes"/>
+        <mkdir dir="${dir.instrumented.classes}"/>
+
+        <emma enabled="${emma.enabled}">
+            <instr instrpathref="classes.path"
+                   destdir="${dir.instrumented.classes}"
+                   metadatafile="${dir.coverage}/metadata.emma"
+                   merge="true"
+                   mode="overwrite">
+                <filter includes="*netblue*"/>
+                <filter excludes="*Test*"/>
+            </instr>
+        </emma>
+
+        <junit printsummary="yes" haltonfailure="no" fork="yes" forkmode="perTest" showoutput="yes">
+            <!-- lots o' system props -->
+            <jvmarg value="-Xmx1g"/>
+	    <jvmarg value="-Dlog4j.configuration=${basedir}/bin/log4j.properties"/>
+            <jvmarg value="-Dpostgresql.adminURL=${postgresql.adminURL}"/>
+            <jvmarg value="-Dpostgresql.db_name=${postgresql.db_name}"/>
+            <jvmarg value="-Dpostgresql.URL=${postgresql.URL}"/>
+            <jvmarg value="-Dpostgresql.bin=${postgresql.bin}"/>
+            <jvmarg value="-Dpostgresql.port=${postgresql.port}"/>
+            <jvmarg value="-Dpostgresql.user=${postgresql.user}"/>
+            <jvmarg value="-Dpostgresql.password=${postgresql.password}"/>
+            <jvmarg value="-Dhibernate.connection.url=${postgresql.URL}"/>
+            <jvmarg value="-Dhibernate.connection.username=${postgresql.user}"/>
+            <jvmarg value="-Dhibernate.connection.password=${postgresql.password}"/>
+            <jvmarg value="-Dhibernate.dialect=org.hibernate.dialect.PostgreSQLDialect"/>
+            <jvmarg value="-Ddir.test.data=${dir.test.data}"/>
+            <jvmarg value="-Ddir.schema=${dir.schema}"/>
+            <jvmarg value="-Demma.coverage.out.file=${dir.coverage}/coverage.emma"/>
+            <jvmarg value="-Demma.coverage.out.merge=true"/>
+            <jvmarg value="-Dbruce.nextSnapshotUnavailableSleep=1000"/>
+            <!-- set class path ...  be user instrumented classes come first -->
+            <classpath location="${dir.instrumented.classes}"/>
+            <classpath refid="classpath"/>
+            <classpath refid="emma.lib"/>
+            <formatter type="xml"/>
+
+            <batchtest fork="yes" todir="${dir.junit.output}/xml">
+                <fileset dir="test/src">
+                    <include name="**/*Test.java"/>
+                </fileset>
+            </batchtest>
+        </junit>
+
+        <delete dir="${dir.junit.output}/html"/>
+        <mkdir dir="${dir.junit.output}/html"/>
+        <junitreport todir="${dir.junit.output}/xml">
+            <fileset dir="${dir.junit.output}/xml">
+                <include name="TEST-*.xml"/>
+            </fileset>
+            <report todir="${dir.junit.output}/html"/>
+        </junitreport>
+
+        <!-- Generate the coverage report -->
+        <emma enabled="${emma.enabled}">
+            <report sourcepath="${dir.src}">
+                <fileset dir="${dir.coverage}">
+                    <include name="*.emma"/>
+                </fileset>
+
+                <txt outfile="${dir.coverage}/coverage.txt"/>
+                <html outfile="${dir.coverage}/coverage.html"/>
+            </report>
+        </emma>
+    </target>
+
+    <target name="cli-docs" description="Generates documentation for the admin CLI">
+        <property name="cli.doc.dir" location="${dir.docs}/../"/>
+        <java jar="${dir.lib}/args4j-tools-2.0.7.jar" fork="true">
+            <arg value="-o"/>
+            <arg value="docs"/>
+            <arg value="-mode"/>
+            <arg value="HTML"/>
+            <arg value="${dir.src}/com/netblue/bruce/admin/Options.java"/>
+        </java>
+    </target>
+
+</project>
+

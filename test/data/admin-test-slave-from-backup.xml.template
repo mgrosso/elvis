@@ -1,0 +1,23 @@
+<!DOCTYPE dataset SYSTEM "dataset.dtd">
+<dataset>
+    <table name="bruce.yf_node">
+        <column>id</column>
+        <column>name</column>
+        <column>uri</column>
+        <column>includetable</column>
+        <row>
+            <value>10</value>
+            <value>Restored From Backup</value>
+            <value>jdbc:postgresql://localhost:@DB_PORT@/new_slave_node?user=bruce</value>
+            <value>replication_test\.replicate_.+</value>
+        </row>
+    </table>
+    <table name="bruce.node_cluster">
+        <column>node_id</column>
+        <column>cluster_id</column>
+        <row>
+            <value>10</value>
+            <value>1000</value>
+        </row>
+    </table>
+</dataset>

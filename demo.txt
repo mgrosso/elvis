@@ -1,0 +1,75 @@
+# Explain schema layout
+psql bruce_dev
+\d
+# Show sequence log
+\d sequencelog
+# Show a few sequences getting captured
+select logsequence();
+select * from sequencelog;
+# Show an oustanding xaction. In another window, begin a transaction
+psql bruce_dev
+begin work;
+# and hold.....
+# back to first window
+select logsequence();
+select * from sequencelog;
+# back to second
+rollback;
+\q
+# back to first
+select logsequence();
+select * from sequencelog;
+
+# Explain test1 (master) and test2 (slave)
+# Demonstrate denyAccessTrigger
+insert into test2 (id) values (42);
+# which will fail
+# Same thing, this time pretend we are the daemon.....
+select daemonmode();
+insert into test2 (id) values (42);
+select normalmode();
+
+# Reset things back to blank slate.....
+psql -a <bruce_dev.sql 
+psql bruce_dev
+# Now show transactionlog
+\d transactionlog
+# show it empty
+select * from transactionlog;
+# Insert a row into the master table, show it in the transaction log
+insert into test1 (c_int) values (42);
+select * from test1;
+select * from transactionlog;
+# Apply the row change to the slave table
+select * from public.test2;
+select daemonmode();
+select applyLogTransaction(cmdtype,'public.test2',info) from transactionlog where rowid=1;
+select normalmode();
+select * from public.test2;
+# Insert another row, apply to the slave table
+insert into test1 (c_int) values (42);
+select * from transactionlog;
+select daemonmode();
+select applyLogTransaction(cmdtype,'public.test2',info) from transactionlog where rowid=2;
+select normalmode();
+select * from public.test2;
+# Update both rows
+update test1 set c_text = 'hi';
+select * from test1;
+select * from transactionlog;
+select daemonmode();
+select applyLogTransaction(cmdtype,'public.test2',info) from transactionlog where rowid=3;
+select * from test2;
+select applyLogTransaction(cmdtype,'public.test2',info) from transactionlog where rowid=4;
+select * from test2;
+select normalmode();
+# Delete both rows
+delete from test1;
+select daemonmode();
+select applyLogTransaction(cmdtype,'public.test2',info) from transactionlog where rowid=5;
+select applyLogTransaction(cmdtype,'public.test2',info) from transactionlog where rowid=6;
+select normalmode();
+select * from test2;
+
+
+
