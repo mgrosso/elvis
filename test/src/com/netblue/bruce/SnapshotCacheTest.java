@@ -413,7 +413,7 @@ public class SnapshotCacheTest extends ReplicationTest
             try
             {
                 // Set up a slave table mirroring test1
-                Connection c = TestDatabaseHelper.getTestDatabaseConnection();
+                Connection c = TestDatabaseHelper.getTestDataSource().getConnection();
                 boolean autoCommit = c.getAutoCommit();
                 c.setAutoCommit(false);
                 c.setSavepoint();
@@ -603,7 +603,7 @@ public class SnapshotCacheTest extends ReplicationTest
 
     private Snapshot getLastSnapshot() throws SQLException
     {
-        Connection c = TestDatabaseHelper.getTestDatabaseConnection();
+        Connection c = TestDatabaseHelper.getTestDataSource().getConnection();
         boolean autoCommit = true;
         autoCommit = c.getAutoCommit();
         c.setAutoCommit(false);
