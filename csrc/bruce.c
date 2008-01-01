@@ -48,8 +48,8 @@
 #include <string.h>
 #include <signal.h>
 
-char *url = "$URL: https://svn.codehaus.org/bruce/branches/1.0/csrc/bruce.c $";
-char *id = "$Id: bruce.c 83 2007-09-06 22:12:46Z rklahn $";
+char *url = "$URL$";
+char *id = "$Id$";
 
 /* For a PG extention to work version >= 8.2, it must include fmgr.h and include this source */
 #ifdef PG_MODULE_MAGIC
@@ -70,6 +70,7 @@ char *Datum2CString(Datum d);
 char *currentLogID(void);
 void insertTransactionLog(char *cmd_type,char *schema,char *table,Datum row_data);
 Oid getTypeOid(char *typeName);
+bool colInUnique(char **uCols,int uColsCount,char *colName);
 
 PG_FUNCTION_INFO_V1(logTransactionTrigger);
 Datum logTransactionTrigger(PG_FUNCTION_ARGS);
@@ -103,6 +104,8 @@ Datum applyLogTransaction(PG_FUNCTION_ARGS) {
   Oid plan_types[2048];
   Datum plan_values[2048];
   char query[10240];
+  char *uCols[1024];
+  int uColsCount=0;
   struct colS {
     char *colName;
     char *colType;
@@ -135,6 +138,29 @@ Datum applyLogTransaction(PG_FUNCTION_ARGS) {
     colSs[i].oldColS=deB64(strsep(&cols[i],fieldSep),&colSs[i].oldIsNull);
     colSs[i].newColS=deB64(strsep(&cols[i],fieldSep),&colSs[i].newIsNull);
     getTypeInputInfo(getTypeOid(colSs[i].colType),&colSs[i].typInput,&colSs[i].typIOParam);
+  }
+
+  /* Does this table have a primary key, or lacking that, a unique index */
+  /* If we come out of this code with uColsCount>0, then, yes. */
+  sprintf(query,"select pg_get_indexdef(indexrelid) from pg_index where indisunique = true and indrelid = (select oid from pg_class where relname = substring('%s' from '%s') and relnamespace = (select oid from pg_namespace where nspname = substring('%s' from '%s'))) and indexprs is null order by indisprimary desc",tTableS,"\\\\.(.*)$",tTableS,"^(.*)\\\\.");
+  plan=SPI_prepare(query,0,plan_types);
+  queryResult=SPI_exec(query,1);
+  if (queryResult<0) {
+    ereport(ERROR,(errmsg_internal("SPI_execp() failed for p/uidx")));
+  }
+  uCols[0]='\0';
+  if (SPI_processed>0) {
+    char *bos,*eos, *uidx;
+    uidx=SPI_getvalue(SPI_tuptable->vals[0],SPI_tuptable->tupdesc,1);
+    bos=strstr(uidx,"(");
+    bos++;
+    eos=strstr(bos,")");
+    eos[0]='\0';
+    for (uCols[uColsCount]=strsep(&bos,", ");uCols[uColsCount];uCols[uColsCount]=strsep(&bos,", ")) {
+      if (strlen(uCols[uColsCount])!=0) {
+	uColsCount++;
+      }
+    }
   }
 
   switch (tTypeS[0]) {
@@ -179,22 +205,31 @@ Datum applyLogTransaction(PG_FUNCTION_ARGS) {
     {
       char whereC[10240];
       char tempS[10240];
+      int numUniqueInWhere=0;
       bindParms = 0;
       sprintf(query,"update %s set ",tTableS);
       sprintf(whereC,"where ");
       for (i=0;i<numCols;i++) {
-	if (colSs[i].oldIsNull) {
-	  sprintf(tempS,"%s%s is null",whereC,colSs[i].colName);
-	  strcpy(whereC,tempS);
-	} else {
-	  bindParms++;
-	  sprintf(tempS,"%s%s = $%d",whereC,colSs[i].colName,bindParms);
-	  strcpy(whereC,tempS);
-	  plan_types[bindParms-1]=getTypeOid(colSs[i].colType);
-	  plan_values[bindParms-1]=OidFunctionCall3(colSs[i].typInput,
-						    CStringGetDatum(colSs[i].oldColS),
-						    ObjectIdGetDatum(colSs[i].typIOParam),
-						    Int32GetDatum(-1));
+	if (colInUnique(uCols,uColsCount,colSs[i].colName)) {
+	  if (colSs[i].oldIsNull) {
+	    sprintf(tempS,"%s%s is null",whereC,colSs[i].colName);
+	    strcpy(whereC,tempS);
+	  } else {
+	    bindParms++;
+	    sprintf(tempS,"%s%s = $%d",whereC,colSs[i].colName,bindParms);
+	    strcpy(whereC,tempS);
+	    plan_types[bindParms-1]=getTypeOid(colSs[i].colType);
+	    plan_values[bindParms-1]=OidFunctionCall3(colSs[i].typInput,
+						      CStringGetDatum(colSs[i].oldColS),
+						      ObjectIdGetDatum(colSs[i].typIOParam),
+						      Int32GetDatum(-1));
+	  }
+	  numUniqueInWhere++;
+	  if ((numUniqueInWhere<uColsCount) || 
+	      ((uColsCount == 0) && (i<numCols-1))) {
+	    sprintf(tempS,"%s and ",whereC);
+	    strcpy(whereC,tempS);
+	  }
 	}
 	if (colSs[i].newIsNull) {
 	  sprintf(tempS,"%s%s = null",query,colSs[i].colName);
@@ -212,8 +247,6 @@ Datum applyLogTransaction(PG_FUNCTION_ARGS) {
 	if (i<numCols-1) {
 	  sprintf(tempS,"%s, ",query);
 	  strcpy(query,tempS);
-	  sprintf(tempS,"%s and ",whereC);
-	  strcpy(whereC,tempS);
 	}
       }
       sprintf(tempS,"%s %s",query,whereC);
@@ -224,23 +257,28 @@ Datum applyLogTransaction(PG_FUNCTION_ARGS) {
     /* Delete */
     {
       char tempS[10240];
+      int numUniqueInWhere=0;
       bindParms = 0;
       sprintf(query,"delete from %s where ",tTableS);
       for (i=0;i<numCols;i++) {
-	if (colSs[i].oldIsNull) {
-	  sprintf(tempS,"%s%s is null",query,colSs[i].colName);
-	  strcpy(query,tempS);
-	} else {
-	  bindParms++;
-	  sprintf(tempS,"%s%s = $%d",query,colSs[i].colName,bindParms);
-	  strcpy(query,tempS);
-	  plan_types[bindParms-1]=getTypeOid(colSs[i].colType);
-	  plan_values[bindParms-1]=OidFunctionCall3(colSs[i].typInput,
-						    CStringGetDatum(colSs[i].oldColS),
-						    ObjectIdGetDatum(colSs[i].typIOParam),
-						    Int32GetDatum(-1));
+	if (colInUnique(uCols,uColsCount,colSs[i].colName)) {
+	  if (colSs[i].oldIsNull) {
+	    sprintf(tempS,"%s%s is null",query,colSs[i].colName);
+	    strcpy(query,tempS);
+	  } else {
+	    bindParms++;
+	    sprintf(tempS,"%s%s = $%d",query,colSs[i].colName,bindParms);
+	    strcpy(query,tempS);
+	    plan_types[bindParms-1]=getTypeOid(colSs[i].colType);
+	    plan_values[bindParms-1]=OidFunctionCall3(colSs[i].typInput,
+						      CStringGetDatum(colSs[i].oldColS),
+						      ObjectIdGetDatum(colSs[i].typIOParam),
+						      Int32GetDatum(-1));
+	  }
 	}
-	if (i<numCols-1) {
+	numUniqueInWhere++;
+	if ((numUniqueInWhere<uColsCount) || 
+	    ((uColsCount == 0) && (i<numCols-1))) {
 	  sprintf(tempS,"%s and ",query);
 	  strcpy(query,tempS);
 	}
@@ -591,4 +629,19 @@ Oid getTypeOid(char *typeName) {
   }
 
   return(retVal);
+}
+
+/* Given a list of unique columns, determine if a column name is in the list */
+/* An empty list should be treated as a list with all column names in it */
+bool colInUnique(char **uCols,int uColsCount,char *colName) {
+  int i;
+  if (uColsCount==0) {
+    return (1==1);
+  }
+  for (i=0;i<uColsCount;i++) {
+    if (strcmp(uCols[i],colName)==0) {
+      return (1==1);
+    }
+  }
+  return (1==0);
 }
