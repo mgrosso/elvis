@@ -24,6 +24,7 @@ package com.netblue.bruce;
 
 import com.netblue.bruce.cluster.Cluster;
 import com.netblue.bruce.cluster.Node;
+import com.netblue.bruce.cluster.RegExReplicationStrategy;
 import org.apache.commons.dbcp.BasicDataSource;
 import org.apache.commons.dbcp.DelegatingConnection;
 import org.apache.log4j.Level;
@@ -35,6 +36,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import static java.text.MessageFormat.format;
+import java.util.ArrayList;
 
 /**
  * Responsible for obtaining {@link com.netblue.bruce.Snapshot}s from the <code>SnapshotCache</code>
@@ -66,10 +68,19 @@ public class SlaveRunner implements Runnable
         dataSource.setDriverClassName(properties.getProperty("bruce.jdbcDriverName", "org.postgresql.Driver"));
         dataSource.setValidationQuery(properties.getProperty("bruce.poolQuery", "select now()"));
         dataSource.setUrl(node.getUri());
-	dataSource.setAccessToUnderlyingConnectionAllowed(true);
+        dataSource.setAccessToUnderlyingConnectionAllowed(true);
 
         try
         {
+            LOGGER.info("Replicating node: " + node.getName() + " at " + node.getUri());
+            RegExReplicationStrategy strategy = new RegExReplicationStrategy(dataSource);
+            final ArrayList<String> replicatedTables = strategy.getTables(node, null);
+            LOGGER.info("Replicating " + replicatedTables.size() + " tables");
+            for (String table : replicatedTables)
+            {
+                LOGGER.info("Replicating table: " + table);
+            }
+
             // creates a connection and all of our prepared statements
             initializeDatabaseResources();
 
@@ -80,7 +91,7 @@ public class SlaveRunner implements Runnable
                 LOGGER.error("Cannot replicate slave node.  No starting point has been identified.  Please ensure that " +
                         "the slavesnapshotstatus table on " + this.node.getUri() + " has been properly initialized.");
             }
-            
+
         }
         catch (SQLException e)
         {
@@ -135,13 +146,16 @@ public class SlaveRunner implements Runnable
     {
         theOneConnection = dataSource.getConnection();
         theOneConnection.setAutoCommit(false);
-	try {
-	    PGConnection theOneConnectionPg = 
-		(PGConnection) ((DelegatingConnection) theOneConnection).getInnermostDelegate();
-	    theOneConnectionPg.setPrepareThreshold(1); 
-	} catch (Throwable t) {
-	    LOGGER.debug("Throwable when setting Pg JDBC Prepare Threshold. Proceding anyways.",t);
-	}
+        try
+        {
+            PGConnection theOneConnectionPg =
+                    (PGConnection) ((DelegatingConnection) theOneConnection).getInnermostDelegate();
+            theOneConnectionPg.setPrepareThreshold(1);
+        }
+        catch (Throwable t)
+        {
+            LOGGER.debug("Throwable when setting Pg JDBC Prepare Threshold. Proceding anyways.", t);
+        }
         prepareStatements();
     }
 
