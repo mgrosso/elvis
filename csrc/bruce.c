@@ -155,12 +155,37 @@ Datum applyLogTransaction(PG_FUNCTION_ARGS) {
     char *bos,*eos, *uidx;
     uidx=SPI_getvalue(SPI_tuptable->vals[0],SPI_tuptable->tupdesc,1);
     ereport(DEBUG2,(errmsg_internal("p/uidx:%s",uidx)));
-    bos=strstr(uidx,"(");
-    bos++;
-    eos=strstr(bos,")");
-    eos[0]='\0';
+    /* We are processing a string that looks like this:
+       CREATE UNIQUE INDEX category_promotion_pkey ON sites.category_promotion USING btree (category_id, promotion_id)
+       and out of this we want the uCols array to look like:
+       uCols[0]="category_id";
+       uCols[1]="promotion_id";
+       
+       but we also need to handle the case like this:
+       CREATE UNIQUE INDEX web_set_pkey ON heartbeat.web_set USING btree ("time")
+       where the col list begins or ends with a reserved word, which PgSQL will put in double
+       quotes, which is why we are looking for the col string to begin with either (" or just (
+       , and similary for the end of the string.
+    */
+    if ((bos=strstr(uidx,"(\""))) {
+      bos+=2;
+    } else {
+      if ((bos=strstr(uidx,"("))) {
+	bos++;
+      } else {
+	ereport(ERROR,(errmsg_internal("Unable to find begining of unique column list from %s",uidx)));
+      }
+    }
+    if ((eos=strstr(bos,"\")")) || (eos=strstr(bos,")"))) {
+      eos[0]='\0';
+    } else {
+      ereport(ERROR,(errmsg_internal("Unable to find end of unique column list from %s",uidx)));
+    }
     ereport(DEBUG2,(errmsg_internal("bos:%s",bos)));
-    for (uCols[uColsCount]=strsep(&bos,", ");uCols[uColsCount];uCols[uColsCount]=strsep(&bos,", ")) {
+#define DELIM "\", "
+    for (uCols[uColsCount]=strsep(&bos,DELIM);
+	 uCols[uColsCount];
+	 uCols[uColsCount]=strsep(&bos,DELIM)) {
       if (strlen(uCols[uColsCount])!=0) {
 	ereport(DEBUG2,(errmsg_internal("uCols[%d]:%s",uColsCount,uCols[uColsCount])));
 	uColsCount++;

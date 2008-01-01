@@ -89,7 +89,7 @@ GRANT ALL ON bruce.snapshotlog TO PUBLIC;
 
 CREATE TABLE bruce.transactionlog_1 (
         rowid bigint DEFAULT nextval('bruce.transactionlog_rowseq'::regclass) UNIQUE,
-        xaction integer,
+        xaction bigint,
         cmdtype character(1),
         tabname text,
         info text
