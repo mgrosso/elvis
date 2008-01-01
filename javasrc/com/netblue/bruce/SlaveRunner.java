@@ -390,11 +390,14 @@ public class SlaveRunner implements Runnable
 	    try {
 		PreparedStatement ps = masterC.prepareStatement(plusNSnapshotQuery);
 		ps.setLong(1,processedSnapshot.getCurrentXid().getLong());
+		ps.setLong(3,processedSnapshot.getCurrentXid().getLong());
 		ResultSet rs;
 		for (long l:new long[]{500L,250L,125L,100L,75L,50L,25L,10L,5L,4L,3L,2L,1L}) {
 		    LOGGER.trace("trying lastProcessedSnapshot +"+l);
 		    retVal = null;
 		    ps.setLong(2,l);
+		    ps.setLong(4,l);
+		    ps.setLong(5,l);
 		    rs=ps.executeQuery();
 		    if (rs.next()) {
 			retVal = new Snapshot(new TransactionID(rs.getLong("current_xaction")),
@@ -583,7 +586,10 @@ public class SlaveRunner implements Runnable
     
     private static final String plusNSnapshotQuery =
 	"select * from bruce.snapshotlog "+
-	" where current_xaction >= (? + ?) % 4294967296 "+ // 4,294,967,296 == 2^32, maximum transaction id, wraps around back at this point
+	// 4,294,967,296 == 2^32, maximum transaction id, wraps around back at this point
+	" where current_xaction >= (? + ?) % 4294967296 "+ 
+	// This bounds the search for xaction, and results in a far better query plan
+	"   and current_xaction <=  (? + ? + ?) % 4294967296 "+ 
 	" order by current_xaction asc limit 1";
 
     // How long to wait if a 'next' snapshot is unavailable, in miliseconds
