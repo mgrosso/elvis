@@ -102,7 +102,7 @@ public class OneAndOnlyOneMasterPerClusterAcceptanceTest extends ReplicationTest
         BasicConfigurator.resetConfiguration();
         com.netblue.bruce.admin.Main.main(new String[]{"-data",
                                                        TestDatabaseHelper.getTestDataDir()+ 
-						       "one-and-only-one-master-add.xml",
+						       "/one-and-only-one-master-add.xml",
                                                        "-operation",
                                                        "INSERT",
                                                        "-url",
