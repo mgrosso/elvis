@@ -23,6 +23,7 @@
 
 #include "postgres.h"
 
+#include "fmgr.h"
 #include "pgstat.h"
 #include "miscadmin.h"
 #include "access/genam.h"
@@ -47,14 +48,16 @@
 #include <string.h>
 #include <signal.h>
 
+/* For a PG extention to work version >= 8.2, it must include fmgr.h and include this source */
+#ifdef PG_MODULE_MAGIC
+PG_MODULE_MAGIC;
+#endif
+
 #define colSep "|"
 #define fieldSep ":"
 #define fieldNull "!"
 #define success 1
 #define failure 0
-
-extern int pgstat_fetch_stat_numbackends(void);
-extern PgStat_StatBeEntry * pgstat_fetch_stat_beentry(int beid);
 
 Datum serializeRow(HeapTuple new_row,HeapTuple old_row,TupleDesc desc);
 Datum serializeCol(char *name,Oid type,char *old,char *new);
