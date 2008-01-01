@@ -62,7 +62,7 @@
         <exec executable="bash" searchpath="true">
             <arg value="-c"/>
             <!-- Our postgresql needs to preceed any other installed postgresql in the path -->
-            <arg value="export PATH=${pg_path}:$PATH; cd ${basedir}/csrc ; make install"/>
+            <arg value="export PATH=${pg_path}:$PATH; cd ${basedir}/csrc ; make clean install"/>
         </exec>
         <antcall target="up_database" InheritAll="false"/>
     </target>
