@@ -132,7 +132,7 @@
         <chmod perm="ug+rx" file="${dir.package}/bin/startup.sh"/>
         <chmod perm="ug+rx" file="${dir.package}/bin/shutdown.sh"/>
         <chmod perm="ug+rx" file="${dir.package}/bin/admin.sh"/>
-        <tar compression="gzip" destfile="${dir.release}/bruce-0.1a.tgz" basedir="${dir.release}" includes="bruce-${bruce.version}/**/*"/>
+        <tar compression="gzip" destfile="${dir.release}/bruce-${bruce.version}.tgz" basedir="${dir.release}" includes="bruce-${bruce.version}/**/*"/>
 	<delete dir="${dir.release}/bin"/>
         <delete dir="${dir.release}/bin"/>
         <delete dir="${dir.release}/lib"/>
