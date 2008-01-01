@@ -1,8 +1,12 @@
 <project name="bruce" default="compile" basedir=".">
     <!-- $Id: build.xml 72521 2007-06-27 15:56:40Z lball $ -->
 
-    <!-- override the generic build framework properties with our own before we import the generic build stuff -->
+    <property name="bruce.version" value="0.5"/>
+
+    <import file="build-pg-extension.xml"/>
+
     <property file="build.properties"/>
+    <property file="postgres.properties"/>
 
     <property name="dir.schema" location="schema"/>
 
@@ -84,6 +88,7 @@
             <manifest>
                 <attribute name="Vendor" value="Vendare NetBlue, Inc"/>
                 <attribute name="Vendor-Id" value="com.netblue"/>
+                <attribute name="Implementation-Version" value="${bruce.version}"/>
                 <attribute name="Build-ID" value="${label}"/>
                 <attribute name="Build-Date" value="${cvstimestamp}"/>
             </manifest>
@@ -92,7 +97,11 @@
     </target>
     
     <target name="release" depends="clean, jar, test, docs">
-        <copy todir="${dir.release}">
+        <property name="dir.package" location="${dir.release}/bruce-${bruce.version}"/>
+        <mkdir dir="${dir.package}"/>
+        <copy todir="${dir.package}">
+            <fileset dir="." includes="postgres.properties"/>
+            <fileset dir="." includes="build-pg-extension.xml"/>
             <fileset dir="." includes="csrc/**/*"/>
             <fileset dir="." includes="bin/**/*"/>
             <fileset dir="." includes="sample/**/*"/>
@@ -120,10 +129,10 @@
         </copy>
 -->
 
-        <chmod perm="ug+rx" file="${dir.release}/bin/startup.sh"/>
-        <chmod perm="ug+rx" file="${dir.release}/bin/shutdown.sh"/>
-        <chmod perm="ug+rx" file="${dir.release}/bin/admin.sh"/>
-        <tar compression="gzip" destfile="${dir.release}/bruce-0.1a.tgz" basedir="${basedir}" includes="release/**/*"/>
+        <chmod perm="ug+rx" file="${dir.package}/bin/startup.sh"/>
+        <chmod perm="ug+rx" file="${dir.package}/bin/shutdown.sh"/>
+        <chmod perm="ug+rx" file="${dir.package}/bin/admin.sh"/>
+        <tar compression="gzip" destfile="${dir.release}/bruce-0.1a.tgz" basedir="${dir.release}" includes="bruce-${bruce.version}/**/*"/>
 	<delete dir="${dir.release}/bin"/>
         <delete dir="${dir.release}/bin"/>
         <delete dir="${dir.release}/lib"/>
@@ -173,7 +182,7 @@
 	 Other options are available. See the discussion under "Use of external tasks" at 
 	 http://ant.apache.org/manual/using.html#tasks  -->
     <target name="test"
-            depends="jar, compile-test, install_pg_extention"
+            depends="jar, compile-test, install_pg_extension"
             description="overrides the generic test target">
 
         <!-- Load the test schema and setup system properties for test data -->
@@ -264,7 +273,7 @@
     </target>
 
     <target name="test-one-class"
-            depends="jar, compile-test, install_pg_extention"
+            depends="jar, compile-test, install_pg_extension"
             description="test one junit class, mainly for debugging, because some of the tests are getting long running">
 	<fail message="property test.this.class must be set (ant -Dtest.this.class=[class name] test-one-class" unless="test.this.class"/>
         <antcall target="schemaexport"/>
@@ -343,72 +352,8 @@
       <fileset dir="${dir.lib}/activemq" includes="*.jar"/>
     </path>
 
-    <target name="must_be_unix">
-        <fail message="must run on a UNIX or UNIX like OS">
-            <condition>
-                <not>
-                    <os family="unix"/>
-                </not>
-            </condition>
-        </fail>
-    </target>
-
-    <target name="database_up?" depends="must_be_unix">
-        <condition property="database_up">
-            <and>
-                <socket server="localhost" port="${postgresql.port}"/>
-                <available file="${postgresql.dir}/postmaster.pid"/>
-            </and>
-        </condition>
-    </target>
-
-    <target name="down_database" depends="database_up?, must_be_unix" if="database_up">
-        <exec executable="head" searchpath="true" outputproperty="pg_pid">
-            <arg value="-1"/>
-            <arg path="${postgresql.dir}/postmaster.pid"/>
-        </exec>
-        <exec executable="kill" searchpath="true">
-            <!-- Forcefuly disconnect all clients, then terminate. (AKA "fast" mode) -->
-            <arg value="-INT"/>
-            <arg value="${pg_pid}"/>
-        </exec>
-        <waitfor>
-            <not>
-                <or>
-                    <socket server="localhost" port="${postgresql.port}"/>
-                    <available file="${postgresql.dir}/postmaster.pid"/>
-                </or>
-            </not>
-        </waitfor>
-    </target>
-
-    <target name="up_database" depends="database_up?, must_be_unix" unless="database_up">
-        <exec executable="${postgresql.bin}/postmaster" spawn="true">
-            <arg value="-D${postgresql.dir}"/>
-        </exec>
-        <waitfor>
-            <and>
-                <socket server="localhost" port="${postgresql.port}"/>
-                <available file="${postgresql.dir}/postmaster.pid"/>
-            </and>
-        </waitfor>
-    </target>
-
-    <target name="install_pg_extention" depends="must_be_unix">
-        <antcall target="down_database" InheritAll="false"/>
-        <exec executable="${postgresql.bin}/pg_config" outputproperty="pg_path">
-            <arg value="--bindir"/>
-        </exec>
-        <exec executable="bash" searchpath="true">
-            <arg value="-c"/>
-            <!-- Our postgresql needs to preceed any other installed postgresql in the path -->
-            <arg value="export PATH=${pg_path}:$PATH; cd ${basedir}/csrc ; make install"/>
-        </exec>
-        <antcall target="up_database" InheritAll="false"/>
-    </target>
-
     <target name="pg_extension_demo"
-            depends="jar, compile-test, install_pg_extention"
+            depends="jar, compile-test, install_pg_extension"
 	    description="Demonstrate the functionality of the postgresql extension">
       <property name="pg_extension_demo" value="true"/>
       <junit printsummary="yes" haltonfailure="no" fork="yes" showoutput="no">

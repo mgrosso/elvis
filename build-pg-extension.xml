@@ -1,0 +1,71 @@
+<project name="extension" default="install_pg_extension" basedir=".">
+    <!-- $Id:$ -->
+
+    <property file="postgres.properties"/>
+
+    <target name="must_be_unix">
+        <fail message="must run on a UNIX or UNIX like OS">
+            <condition>
+                <not>
+                    <os family="unix"/>
+                </not>
+            </condition>
+        </fail>
+    </target>
+
+    <target name="database_up?" depends="must_be_unix">
+        <condition property="database_up">
+            <and>
+                <socket server="localhost" port="${postgresql.port}"/>
+                <available file="${postgresql.dir}/postmaster.pid"/>
+            </and>
+        </condition>
+    </target>
+
+    <target name="down_database" depends="database_up?, must_be_unix" if="database_up">
+        <exec executable="head" searchpath="true" outputproperty="pg_pid">
+            <arg value="-1"/>
+            <arg path="${postgresql.dir}/postmaster.pid"/>
+        </exec>
+        <exec executable="kill" searchpath="true">
+            <!-- Forcefuly disconnect all clients, then terminate. (AKA "fast" mode) -->
+            <arg value="-INT"/>
+            <arg value="${pg_pid}"/>
+        </exec>
+        <waitfor>
+            <not>
+                <or>
+                    <socket server="localhost" port="${postgresql.port}"/>
+                    <available file="${postgresql.dir}/postmaster.pid"/>
+                </or>
+            </not>
+        </waitfor>
+    </target>
+
+    <target name="up_database" depends="database_up?, must_be_unix" unless="database_up">
+        <exec executable="${postgresql.bin}/postmaster" spawn="true">
+            <arg value="-D${postgresql.dir}"/>
+        </exec>
+        <waitfor>
+            <and>
+                <socket server="localhost" port="${postgresql.port}"/>
+                <available file="${postgresql.dir}/postmaster.pid"/>
+            </and>
+        </waitfor>
+    </target>
+
+    <target name="install_pg_extension" depends="must_be_unix">
+        <antcall target="down_database" InheritAll="false"/>
+        <exec executable="${postgresql.bin}/pg_config" outputproperty="pg_path">
+            <arg value="--bindir"/>
+        </exec>
+        <exec executable="bash" searchpath="true">
+            <arg value="-c"/>
+            <!-- Our postgresql needs to preceed any other installed postgresql in the path -->
+            <arg value="export PATH=${pg_path}:$PATH; cd ${basedir}/csrc ; make install"/>
+        </exec>
+        <antcall target="up_database" InheritAll="false"/>
+    </target>
+
+</project>
+
