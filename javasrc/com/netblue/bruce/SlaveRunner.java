@@ -392,8 +392,7 @@ public class SlaveRunner implements Runnable
 		ps.setLong(1,processedSnapshot.getCurrentXid().getLong());
 		ps.setLong(3,processedSnapshot.getCurrentXid().getLong());
 		ResultSet rs;
-		for (long l:new long[]{100000L, 50000L, 25000L, 10000L, 5000L, 2000L, 1000L, 
-				       500L,250L,125L,100L,75L,50L,25L,10L,5L,4L,3L,2L,1L}) {
+		for (long l:new long[]{500L,250L,125L,100L,75L,50L,25L,10L,5L,4L,3L,2L,1L}) {
 		    LOGGER.trace("trying lastProcessedSnapshot +"+l);
 		    retVal = null;
 		    ps.setLong(2,l);
