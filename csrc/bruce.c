@@ -138,15 +138,19 @@ Datum applyLogTransaction(PG_FUNCTION_ARGS) {
     /* Insert */
     {
       char values[10240];
+      char tempS[10240];
       sprintf(query,"insert into %s (",tTableS);
       sprintf(values," values (");
       for (i=0;i<numCols;i++) {
-	sprintf(query,"%s%s",query,colSs[i].colName);
+	sprintf(tempS,"%s%s",query,colSs[i].colName);
+	strcpy(query,tempS);
 	if (colSs[i].oldIsNull) {
-	  sprintf(values,"%sNULL",values);
+	  sprintf(tempS,"%sNULL",values);
+	  strcpy(values,tempS);
 	} else {
 	  bindParms++;
-	  sprintf(values,"%s$%d",values,bindParms);
+	  sprintf(tempS,"%s$%d",values,bindParms);
+	  strcpy(values,tempS);
 	  plan_types[bindParms-1]=colSs[i].colType;
 	  /* Convert string to a Datum of the right type */
 	  plan_values[bindParms-1]=OidFunctionCall3(colSs[i].typInput,
@@ -156,26 +160,32 @@ Datum applyLogTransaction(PG_FUNCTION_ARGS) {
 	}
 	/* Not the last col? Add appropritate field seperators */
 	if (i<numCols-1) {
-	  sprintf(query,"%s,",query);
-	  sprintf(values,"%s,",values);
+	  sprintf(tempS,"%s,",query);
+	  strcpy(query,tempS);
+	  sprintf(tempS,"%s,",values);
+	  strcpy(values,tempS);
 	}
       }
-      sprintf(query,"%s)%s)",query,values);
+      sprintf(tempS,"%s)%s)",query,values);
+      strcpy(query,tempS);
     }
     break;
   case 'U':
     /* Update */
     {
       char whereC[10240];
+      char tempS[10240];
       bindParms = 0;
       sprintf(query,"update %s set ",tTableS);
       sprintf(whereC,"where ");
       for (i=0;i<numCols;i++) {
 	if (colSs[i].oldIsNull) {
-	  sprintf(whereC,"%s%s is null",whereC,colSs[i].colName);
+	  sprintf(tempS,"%s%s is null",whereC,colSs[i].colName);
+	  strcpy(whereC,tempS);
 	} else {
 	  bindParms++;
-	  sprintf(whereC,"%s%s = $%d",whereC,colSs[i].colName,bindParms);
+	  sprintf(tempS,"%s%s = $%d",whereC,colSs[i].colName,bindParms);
+	  strcpy(whereC,tempS);
 	  plan_types[bindParms-1]=colSs[i].colType;
 	  plan_values[bindParms-1]=OidFunctionCall3(colSs[i].typInput,
 						    CStringGetDatum(colSs[i].oldColS),
@@ -183,10 +193,12 @@ Datum applyLogTransaction(PG_FUNCTION_ARGS) {
 						    Int32GetDatum(-1));
 	}
 	if (colSs[i].newIsNull) {
-	  sprintf(query,"%s%s = null",query,colSs[i].colName);
+	  sprintf(tempS,"%s%s = null",query,colSs[i].colName);
+	  strcpy(query,tempS);
 	} else {
 	  bindParms++;
-	  sprintf(query,"%s%s = $%d",query,colSs[i].colName,bindParms);
+	  sprintf(tempS,"%s%s = $%d",query,colSs[i].colName,bindParms);
+	  strcpy(query,tempS);
 	  plan_types[bindParms-1]=colSs[i].colType;
 	  plan_values[bindParms-1]=OidFunctionCall3(colSs[i].typInput,
 						    CStringGetDatum(colSs[i].newColS),
@@ -194,24 +206,30 @@ Datum applyLogTransaction(PG_FUNCTION_ARGS) {
 						    Int32GetDatum(-1));
 	}
 	if (i<numCols-1) {
-	  sprintf(query,"%s, ",query);
-	  sprintf(whereC,"%s and ",whereC);
+	  sprintf(tempS,"%s, ",query);
+	  strcpy(query,tempS);
+	  sprintf(tempS,"%s and ",whereC);
+	  strcpy(whereC,tempS);
 	}
       }
-      sprintf(query,"%s %s",query,whereC);
+      sprintf(tempS,"%s %s",query,whereC);
+      strcpy(query,tempS);
     }
     break;
   case 'D':
     /* Delete */
     {
+      char tempS[10240];
       bindParms = 0;
       sprintf(query,"delete from %s where ",tTableS);
       for (i=0;i<numCols;i++) {
 	if (colSs[i].oldIsNull) {
-	  sprintf(query,"%s%s is null",query,colSs[i].colName);
+	  sprintf(tempS,"%s%s is null",query,colSs[i].colName);
+	  strcpy(query,tempS);
 	} else {
 	  bindParms++;
-	  sprintf(query,"%s%s = $%d",query,colSs[i].colName,bindParms);
+	  sprintf(tempS,"%s%s = $%d",query,colSs[i].colName,bindParms);
+	  strcpy(query,tempS);
 	  plan_types[bindParms-1]=colSs[i].colType;
 	  plan_values[bindParms-1]=OidFunctionCall3(colSs[i].typInput,
 						    CStringGetDatum(colSs[i].oldColS),
@@ -219,7 +237,8 @@ Datum applyLogTransaction(PG_FUNCTION_ARGS) {
 						    Int32GetDatum(-1));
 	}
 	if (i<numCols-1) {
-	  sprintf(query,"%s and ",query);
+	  sprintf(tempS,"%s and ",query);
+	  strcpy(query,tempS);
 	}
       }
     }
