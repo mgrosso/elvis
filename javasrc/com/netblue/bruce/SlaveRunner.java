@@ -390,17 +390,15 @@ public class SlaveRunner implements Runnable
 	    try {
 		PreparedStatement ps = masterC.prepareStatement(plusNSnapshotQuery);
 		ps.setLong(1,processedSnapshot.getCurrentXid().getLong());
-		ps.setLong(3,processedSnapshot.getCurrentXid().getLong());
 		ResultSet rs;
-		for (long l:new long[]{500L,250L,125L,100L,75L,50L,25L,10L,5L,4L,3L,2L,1L}) {
+		for (long l:new long[]{100000L, 50000L, 25000L, 10000L, 5000L, 2000L, 1000L,
+				       500L,250L,125L,100L,75L,50L,25L,10L,5L,4L,3L,2L,1L}) {
 		    LOGGER.trace("trying lastProcessedSnapshot +"+l);
 		    retVal = null;
 		    ps.setLong(2,l);
-		    ps.setLong(4,l);
-		    ps.setLong(5,l);
-		    ps.setLong(6,processedSnapshot.getMinXid().getLong());
-		    ps.setLong(7,processedSnapshot.getMinXid().getLong());
-		    ps.setLong(8,processedSnapshot.getMaxXid().getLong());
+		    ps.setLong(3,processedSnapshot.getMinXid().getLong());
+		    ps.setLong(4,processedSnapshot.getMinXid().getLong());
+		    ps.setLong(5,processedSnapshot.getMaxXid().getLong());
 		    rs=ps.executeQuery();
 		    if (rs.next()) {
 			retVal = new Snapshot(new TransactionID(rs.getLong("current_xaction")),
@@ -591,8 +589,6 @@ public class SlaveRunner implements Runnable
 	"select * from bruce.snapshotlog "+
 	// 4,294,967,296 == 2^32, maximum transaction id, wraps around back at this point
 	" where current_xaction >= (? + ?) % 4294967296 "+ 
-	// This bounds the search for xaction, and results in a far better query plan
-	"   and current_xaction <=  (? + ? + ?) % 4294967296 "+ 
 	// Scans for a snapshot that is actualy greater than the current snapshot
 	"   and ((min_xaction > ?) or ((min_xaction = ?) and (max_xaction > ?))) "+
 	" order by current_xaction asc limit 1";
