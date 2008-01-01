@@ -1,0 +1,28 @@
+Key:     BRUCE-27
+Type:   Improvement Improvement
+Status:     Open Open
+Priority:   Critical Critical
+Assignee:   Robert Klahn
+Reporter:   Robert Klahn
+Votes:  0
+Watchers:   0
+Operations
+
+If you were logged in you would be able to see more operations.
+    
+Bruce
+Using the snapshotlog and transactionlog views result in horrific query plans
+Created: 19/Dec/07 04:15 AM   Updated: 19/Dec/07 04:15 AM   
+Return to search
+Issue 3 of 29 issue(s)
+<< Previous | BRUCE-27 | Next >>
+Component/s:    None
+Affects Version/s:  1.0
+Fix Version/s:  1.0
+
+Time Tracking:  
+Not Specified
+
+
+ Description    « Hide
+Mainly a placeholder for now, but the summary does say it all.

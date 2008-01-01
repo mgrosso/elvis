@@ -1,0 +1,164 @@
+snapshot and transaction log tables need public permission
+Created: 03/Aug/07 03:56 PM   Updated: 16/Oct/07 06:44 PM   
+Return to search
+Issue 22 of 29 issue(s)
+<< Previous | BRUCE-8 | Next >>
+Component/s:    Admin Tool, Daemon
+Affects Version/s:  0.5
+Fix Version/s:  0.5
+
+Time Tracking:  
+Original Estimate:  Not Specified   
+Remaining Estimate:     0 minutes   
+Time Spent - 9 hours
+Time Spent:     9 hours     
+Time Spent - 9 hours
+
+
+ Description    « Hide
+Non-superusers can not update/insert/delete into replicated tables on the master, for lack of permissions on the snapshot and transaction log tables.
+
+Fix here has to be to both initial setup (admin tool) and log switch thread in the daemon.
+
+ Description    
+   Non-superusers can not update/insert/delete into replicated tables on the master, for lack of permissions on the snapshot and transaction log tables. Fix here has to be to both initial setup (admin tool) and log switch thread in the daemon.
+    Show »
+
+ All     Comments    Work Log    Change History           Sort Order: [Ascending order - Click to sort in descending order]
+[ Permlink | « Hide ]
+Robert Klahn - 03/Aug/07 04:07 PM
+A workaround exists. Priority from blocker to critical.
+[ Show » ]
+Robert Klahn - 03/Aug/07 04:07 PM A workaround exists. Priority from blocker to critical.
+
+[ Permlink | « Hide ]
+Robert Klahn - 21/Aug/07 01:58 AM
+Looks like initial schema setup is still not working right.......
+
+On Aug 20, 2007, at 11:38 PM, Metin Ozisik wrote:
+
+Actually, the original problem keeping MP hostage since last week was the following:
+
+24031 2007-08-20 16:01:01.261 PDT ww-x03-1-vm08.netblue.ww(34538) bi INSERT 46ca19d2.5ddf 313 22175157: ERROR: permission denied for relation currentlog
+
+24031 2007-08-20 16:01:01.261 PDT ww-x03-1-vm08.netblue.ww(34538) bi INSERT 46ca19d2.5ddf 314 22175157: CONTEXT: SQL statement "select max(id) from bruce.currentlog"
+
+24634 2007-08-20 16:04:02.246 PDT ww-x03-2-vm08.netblue.ww(49292) bi INSERT 46ca1c01.603a 97 22182716: ERROR: permission denied for relation currentlog
+
+24634 2007-08-20 16:04:02.246 PDT ww-x03-2-vm08.netblue.ww(49292) bi INSERT 46ca1c01.603a 98 22182716: CONTEXT: SQL statement "select max(id) from bruce.currentlog"
+
+17334 2007-08-20 16:06:00.158 PDT ww-x03-1-vm08.netblue.ww(59312) bi INSERT 46ca01c4.43b6 1140 22187679: ERROR: permission denied for relation currentlog
+
+17334 2007-08-20 16:06:00.158 PDT ww-x03-1-vm08.netblue.ww(59312) bi INSERT 46ca01c4.43b6 1141 22187679: CONTEXT: SQL statement "select max(id) from bruce.currentlog"
+
+17334 2007-08-20 16:07:00.738 PDT ww-x03-1-vm08.netblue.ww(59312) bi INSERT 46ca01c4.43b6 1188 22190220: ERROR: permission denied for relation currentlog
+
+17334 2007-08-20 16:07:00.738 PDT ww-x03-1-vm08.netblue.ww(59312) bi INSERT 46ca01c4.43b6 1189 22190220: CONTEXT: SQL statement "select max(id) from bruce.currentlog"
+
+24634 2007-08-20 16:07:01.290 PDT ww-x03-2-vm08.netblue.ww(49292) bi INSERT 46ca1c01.603a 211 22190246: ERROR: permission denied for relation currentlog
+
+I gave 'bi', permissions for 'currentlog'. Then, I started to get:
+
+12368 2007-08-20 21:34:00.394 PDT ww-x03-1-vm08.netblue.ww(59266) bi INSERT 46ca64b0.3050 303 23008739: ERROR: permission denied for sequence transactionlog_rowseq
+
+12368 2007-08-20 21:34:00.394 PDT ww-x03-1-vm08.netblue.ww(59266) bi INSERT 46ca64b0.3050 304 23008739: CONTEXT: SQL statement "insert into bruce.transactionlog_7 (xacti\
+
+on,cmdtype,tabname,info) values ($1,'I','bimp.auction_form_fact_200708',$2);"
+
+9768 2007-08-20 21:34:00.395 PDT ww-x03-1-vm08.netblue.ww(35957) bi INSERT 46ca5bc5.2628 417 23008736: ERROR: permission denied for sequence transactionlog_rowseq
+
+9768 2007-08-20 21:34:00.395 PDT ww-x03-1-vm08.netblue.ww(35957) bi INSERT 46ca5bc5.2628 418 23008736: CONTEXT: SQL statement "insert into bruce.transactionlog_7 (xactio\
+
+n,cmdtype,tabname,info) values ($1,'I','bimp.auction_form_fact_200708',$2);"
+
+14149 2007-08-20 21:34:00.396 PDT ww-x03-1-vm08.netblue.ww(41014) bi INSERT 46ca6b36.3745 77 23008738: ERROR: permission denied for sequence transactionlog_rowseq
+
+14149 2007-08-20 21:34:00.396 PDT ww-x03-1-vm08.netblue.ww(41014) bi INSERT 46ca6b36.3745 78 23008738: CONTEXT: SQL statement "insert into bruce.transactionlog_7 (xactio\
+
+n,cmdtype,tabname,info) values ($1,'I','bimp.auction_form_fact_200708',$2);"
+
+6263 2007-08-20 21:34:00.397 PDT ww-x03-1-vm08.netblue.ww(53255) bi INSERT 46ca4e7b.1877 755 23008740: ERROR: permission denied for sequence transactionlog_rowseq
+
+6263 2007-08-20 21:34:00.397 PDT ww-x03-1-vm08.netblue.ww(53255) bi INSERT 46ca4e7b.1877 756 23008740: CONTEXT: SQL statement "insert into bruce.transactionlog_7 (xactio\
+
+n,cmdtype,tabname,info) values ($1,'I','bimp.auction_form_fact_200708',$2);"
+
+upon which I ran the command I mentioned earlier, for everything on bruce schema...
+
+From: Robert A. Klahn Robert.Klahn@connexuscorp.com
+Sent: Monday, August 20, 2007 10:57 PM
+To: Metin Ozisik
+Subject: Re: permissions on bruce replication
+
+This is something that I thought was already fixed. Its documented under http://jira.codehaus.org/browse/BRUCE-8, and fixed in code here: http://fisheye.codehaus.org/changelog/bruce?cs=50&csize=2
+
+This could be a first time setup thing, or could be that we don't have the right code in prod. I will check what the permissions turn out to be after the next transaction log rotation (which will happen within the next 24 hours) on the new transaction log and snapshot log.
+
+If the permissions are correct on the new logs, then Im going to dismiss this as a first time setup problem. Otherwise, I will find out how the wrong release got into prod. OK?
+
+Bob.
+
+On Aug 20, 2007, at 9:57 PM, Metin Ozisik wrote:
+
+Bob,
+
+Turns out the subject issue (below, #c5277) was not really stuck subscribers. Seems like bi user was failing on bruce triggers. On db-bimp.ww, I've done the following to remedy the production problem for the time being:
+
+for i in `psql bidb -t -c "\z bruce." | awk '{print $3}'`; do psql bidb -c "grant all on bruce.$i to bi"; done
+
+This is likely more permissions than necessary. Would you check it out?
+
+Thx,
+
+-Metin
+
+----Original Message----
+From: trac@netblue.com trac@netblue.com
+Sent: Monday, August 20, 2007 6:29 PM
+To: Metin Ozisik
+Subject: Re: [Code Promo] #5277: Production - MP Reporting - The auction numbers shown in reports are not the same ascross the different reports for the same day
+
+#5277: Production - MP Reporting - The auction numbers shown in reports are not
+
+the same ascross the different reports for the same day
+
+-----------------------------------+--------------------------------------
+
+Reporter: jgerdes@netblue.com | Owner: mozisik@netblue.com
+
+Type: defect | Status: new
+
+Priority: high | Milestone: LegoLand 0.8.1
+
+Component: - Select - | Severity: critical
+
+Resolution: | Keywords:
+
+Nb_status: 0 - Under Preparation | Nb_deployment_slot:
+
+-----------------------------------+--------------------------------------
+
+Changes (by asaswade@netblue.com):
+
+    * cc: mmadrigal@netblue.com, asaswade@netblue.com => dmorro@netblue.com,
+
+asaswade@netblue.com
+
+    * owner: sye@netblue.com => mozisik@netblue.com
+
+Comment:
+
+I noticed that all mp_bi events are unprocessed. mp_mp events however are
+
+processing fine. Talked to Dave about this. Assigning this ticket to
+
+Metin.
+
+
+
+Ticket URL: <http://trac/changes/ticket/5277>
+
+Code Promo <http://trac.yfdirect.net/changes/>
+
+Netblue Code Promotions
+

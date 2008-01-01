@@ -1,0 +1,32 @@
+Key:     BRUCE-28
+Type:   Bug Bug
+Status:     Open Open
+Priority:   Major Major
+Assignee:   Robert Klahn
+Reporter:   Robert Klahn
+Votes:  0
+Watchers:   0
+Operations
+
+If you were logged in you would be able to see more operations.
+    
+Bruce
+Master connections sometimes remain alive after slave database terminates
+Created: 19/Dec/07 04:42 AM   Updated: 19/Dec/07 04:42 AM   
+Return to search
+Issue 2 of 29 issue(s)
+<< Previous | BRUCE-28 | Next >>
+Component/s:    None
+Affects Version/s:  1.0
+Fix Version/s:  1.0
+
+Time Tracking:  
+Not Specified
+
+
+ Description    « Hide
+resulting in <IDLE> in transaction for the master connection, still holding locks, etc.
+ Description    
+   resulting in <IDLE> in transaction for the master connection, still holding locks, etc.
+    Show »
+

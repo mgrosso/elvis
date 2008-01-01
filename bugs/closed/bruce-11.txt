@@ -1,0 +1,24 @@
+
+Finding snapshots from slaves where slaves participate in more than one cluster not working
+Created: 30/Aug/07 08:34 AM   Updated: 30/Aug/07 09:15 AM   
+Return to search
+Issue 19 of 29 issue(s)
+<< Previous | BRUCE-11 | Next >>
+Component/s:    Daemon
+Affects Version/s:  0.5
+Fix Version/s:  0.5
+
+Time Tracking:  
+Original Estimate:  Not Specified   
+Remaining Estimate:     0 minutes   
+Time Spent - 15 minutes
+Time Spent:     15 minutes  
+Time Spent - 15 minutes
+
+
+ Description    « Hide
+Daemon never finds the snapshot for the 2nd or greater cluster. Query in question
+
+select * from bruce.slavesnapshotstatus where slave_xaction = (select max(slave_xaction) from bruce.slavesnapshotstatus) and clusterid = $1
+
+The subselect is unnessasary (clusterid is the primary key), and because of the subselect, never finds a row.

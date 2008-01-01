@@ -1,0 +1,37 @@
+User written data types not replicating
+Created: 30/Aug/07 02:44 PM   Updated: 19/Oct/07 01:30 PM   
+Return to search
+Issue 18 of 29 issue(s)
+<< Previous | BRUCE-12 | Next >>
+Component/s:    Daemon
+Affects Version/s:  0.5
+Fix Version/s:  1.0
+
+Time Tracking:  
+Original Estimate:  Not Specified   
+Remaining Estimate:     0 minutes   
+Time Spent - 6 hours
+Time Spent:     6 hours     
+Time Spent - 6 hours
+
+
+ Description    « Hide
+In this particular case, a tsearch2 datatype is not replicating.
+
+<noformat>
+153 | 2034413349 | I | matchpoint.adv_keyword | id:20:NDc3:Unable to render embedded object: File () not found.|norm_keyword:1043:ZnVybml0dXJlIHN5c3RlbQ==:Unable to render embedded object: File () not found.|keyword_group__id:20:MjUx:Unable to render embedded object: File () not found.:Unable to render embedded object: File () not found.|is_deleted:16:Zg==:Unable to render embedded object: File () not found.|last_updated_by:23:!:!|last_updated_dt:1114:MjAwNy0wOC0zMCAxMDo0Njo0OS41NDY=:Unable to render embedded object: File () not found.|norm_keyword_agg:1043:ZnVybml0dXIgc3lzdGVt:Unable to render embedded object: File () not found.
+<noformat>
+
+322513 is the tsvector tsearch2 data type. It has different OIDs on different nodes. This is a pretty likely situation with user data types, even with transactional backups.
+
+ Description    
+   In this particular case, a tsearch2 datatype is not replicating. <noformat> 153 | 2034413349 | I | matchpoint.adv_keyword | id:20:NDc3:Unable to render embedded object: File () not found.|norm_keyword:1043:ZnVybml0dXJlIHN5c3RlbQ==:Unable to render embedded object: File () not found.|keyword_group__id:20:MjUx:Unable to render embedded object: File () not found.:Unable to render embedded object: File () not found.|is_deleted:16:Zg==:Unable to render embedded object: File () not found.|last_updated_by:23:!:!|last_updated_dt:1114:MjAwNy0wOC0zMCAxMDo0Njo0OS41NDY=:Unable to render embedded object: File () not found.|norm_keyword_agg:1043:ZnVybml0dXIgc3lzdGVt:Unable to render embedded object: File () not found. <noformat> 322513 is the tsvector tsearch2 data type. It has different OIDs on different nodes. This is a pretty likely situation with user data types, even with transactional backups.
+    Show »
+
+ All     Comments    Work Log    Change History           Sort Order: [Ascending order - Click to sort in descending order]
+[ Permlink | « Hide ]
+Robert Klahn - 19/Oct/07 01:30 PM
+Fixed by http://svn.bruce.codehaus.org/changelog/bruce/?cs=88
+[ Show » ]
+Robert Klahn - 19/Oct/07 01:30 PM Fixed by http://svn.bruce.codehaus.org/changelog/bruce/?cs=88
+

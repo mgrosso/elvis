@@ -1,0 +1,45 @@
+Key:     BRUCE-24
+Type:   Bug Bug
+Status:     Open Open
+Priority:   Major Major
+Assignee:   Robert Klahn
+Reporter:   Robert Klahn
+Votes:  0
+Watchers:   0
+Operations
+
+If you were logged in you would be able to see more operations.
+    
+Bruce
+Inital create of transactionlog uses integer for xaction, not bigint.
+Created: 12/Dec/07 03:18 AM   Updated: 12/Dec/07 03:18 AM   
+Return to search
+Issue 6 of 29 issue(s)
+<< Previous | BRUCE-24 | Next >>
+Component/s:    Admin Tool
+Affects Version/s:  1.0
+Fix Version/s:  1.5+
+
+Time Tracking:  
+Not Specified
+
+
+ Description    « Hide
+Shows up as
+
+ERROR:  integer out of rangeCONTEXT:  SQL statement "insert into bruce.transactionlog_1 (xaction,cmdtype,tabname,info) values ($1,'I','bruce.test1',$2);"
+
+problem is that initial creation of transactionlog_1 results in:
+
+sites=# \d transactionlog_1                       
+Table "bruce.transactionlog_1" 
+Column  |     Type     |                     Modifiers                     
+ ---------+--------------+---------------------------------------------------- 
+rowid   | bigint       | default nextval('transactionlog_rowseq'::regclass) 
+xaction | integer      |  cmdtype | character(1) |  
+tabname | text         |  
+info    | text         | 
+Indexes:    "transactionlog_1_rowid_key" UNIQUE, btree (rowid)    
+"transactionlog_1_xaction_idx" btree (xaction)
+
+An examination of the daemon code showed that future transactionlogs would be created correctly.

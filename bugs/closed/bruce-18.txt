@@ -1,0 +1,52 @@
+Cant process TIDs > 2^31
+Created: 10/Oct/07 01:52 AM   Updated: 16/Oct/07 06:43 PM   
+Return to search
+Issue 12 of 29 issue(s)
+<< Previous | BRUCE-18 | Next >>
+Component/s:    None
+Affects Version/s:  1.0
+Fix Version/s:  1.0
+
+Time Tracking:  
+Not Specified
+
+
+ Description    « Hide
+portaldb=# select bruce.logsnapshot();
+ERROR: value "2147683487" is out of range for type integer
+
+Problem is in the logsnapshot() function, where its using INT4OID where it should use INT8OID........
+
+Also a problem in the daemon. The "next snapshot wraparound" query is incorrect. It should be:
+
+select * from bruce.snapshotlog where current_xaction not in (?,?,?) and ((current_xaction >= ? and current_xaction <= ?) or (current_xaction >= ? and current_xaction <= ?)) order by current_xaction desc limit 1
+
+Fix (to the extension problem):
+
+http://svn.bruce.codehaus.org/changelog/bruce/?cs=94
+and
+http://svn.bruce.codehaus.org/changelog/bruce/?cs=96
+
+Workaround (to the daemon problem):
+
+Pass:
+
+'-Dbruce.slave.nextSnapshotWraparound=select current_xaction,min_xaction,max_xaction,outstanding_xactions,update_time from bruce.snapshotlog where current_xaction not in (?,?,?) and ((current_xaction >= ? and current_xaction <= ?) or (current_xaction >= ? and current_xaction <= ?)) order by current_xaction desc limit 1'
+
+to the java command line.
+
+Fix (to the daemon problem):
+
+TBD
+
+ Description    
+   portaldb=# select bruce.logsnapshot(); ERROR: value "2147683487" is out of range for type integer Problem is in the logsnapshot() function, where its using INT4OID where it should use INT8OID........ Also a problem in the daemon. The "next snapshot wraparound" query is incorrect. It should be: select * from bruce.snapshotlog where current_xaction not in (?,?,?) and ((current_xaction >= ? and current_xaction <= ?) or (current_xaction >= ? and current_xaction <= ?)) order by current_xaction desc limit 1 Fix (to the extension problem): http://svn.bruce.codehaus.org/changelog/bruce/?cs=94 and http://svn.bruce.codehaus.org/changelog/bruce/?cs=96Workaround (to the daemon problem): Pass: '-Dbruce.slave.nextSnapshotWraparound=select current_xaction,min_xaction,max_xaction,outstanding_xactions,update_time from bruce.snapshotlog where current_xaction not in (?,?,?) and ((current_xaction >= ? and current_xaction <= ?) or (current_xaction >= ? and current_xaction <= ?)) order by current_xaction desc limit 1' to the java command line. Fix (to the daemon problem): TBD
+    Show »
+
+ All     Comments    Work Log    Change History           Sort Order: [Ascending order - Click to sort in descending order]
+[ Permlink | « Hide ]
+Robert Klahn - 16/Oct/07 06:43 PM
+Fixed by http://fisheye.codehaus.org/changelog/bruce/?cs=99
+[ Show » ]
+Robert Klahn - 16/Oct/07 06:43 PM Fixed by http://fisheye.codehaus.org/changelog/bruce/?cs=99
+

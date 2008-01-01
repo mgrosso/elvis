@@ -1,0 +1,38 @@
+Attempted double posting of transaction
+Created: 02/Jul/07 02:50 PM   Updated: 06/Jul/07 02:31 PM   
+Return to search
+Issue 29 of 29 issue(s)
+<< Previous | BRUCE-1 | Next >>
+Component/s:    Daemon
+Affects Version/s:  0.5
+Fix Version/s:  0.5
+
+Time Tracking:  
+Original Estimate:  2 days  
+Original Estimate - 2 days
+Remaining Estimate:     1 day, 12 hours     
+Time Spent - 12 hours   Remaining Estimate - 1 day, 12 hours
+Time Spent:     12 hours    
+Time Spent - 12 hours   Remaining Estimate - 1 day, 12 hours
+
+Environment:    machine rakdev: F-7 i386 Pg 8.2 Bruce: r12
+
+
+ Description    « Hide
+Core problem: A transaction should only be between one and only one set of snapshots, where Sn-1 < Sn for all n. Found not to be the case here.
+
+xaction 13251735 attempted double posting. Slave flagged this as an error (attempted insert violated primary key)
+
+Relevant Snapshots:
+
+(current,min,max,outstanding)
+S3: (13251685,13251685,13251686,NULL)
+S4: (13251735,13251735,13251736,NULL)
+S5: (13251778,13251735,13251779,13251735)
+S6: (13251779,13251778,13251780,13251778)
+
+Xaction between snapshots:
+
+13251735,S3,S4: TRUE <=== Problem is that XID is between two different non-overlapping snapshot ranges.
+13251735,S4,S5: FALSE
+13251735,S5,S6: TRUE

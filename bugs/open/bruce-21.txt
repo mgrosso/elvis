@@ -1,0 +1,98 @@
+Bruce warnings in postgres logs
+Created: 01/Nov/07 12:56 PM   Updated: 05/Dec/07 01:01 PM   
+Return to search
+Issue 9 of 29 issue(s)
+<< Previous | BRUCE-21 | Next >>
+Component/s:    Daemon
+Affects Version/s:  1.0
+Fix Version/s:  1.5
+
+Time Tracking:  
+Not Specified
+
+
+ Description    « Hide
+Problem: Bruce daemon code uses non-SQL standard escapes for some queries
+
+This warning is issued in the postgresql log when the query is executed:
+
+"nonstandard use of \ in a string literal at character NUM"
+
+This only occurs against Pg 8.2.X.
+
+Workaround:
+
+Set escape_string_warning = off in postgresql.conf
+
+-------------------------------------------------------------
+
+Subject: RE: Bruce errors/warnings in postgres logs
+Date: Thu, 1 Nov 2007 00:47:56 -0700
+From: "Metin Ozisik" <Metin.Ozisik@connexuscorp.com>
+To: "Robert A. Klahn" <Robert.Klahn@connexuscorp.com>
+
+I was musing over what we did during the bipp migration for the common
+scripts we used. It just occurred to me, escape string syntax 'E' takes
+care of the issue and you'd be compatible in both versions.
+
+i.e. select E'foo\'bar'
+
+and even if there is no escape, that's not a problem
+________________________________
+
+From: Robert A. Klahn Robert.Klahn@connexuscorp.com
+Sent: Wednesday, October 31, 2007 4:11 PM
+To: Metin Ozisik
+Subject: Re: Bruce errors/warnings in postgres logs
+
+"nonstandard use of \....." should only be showing up in 8.2.X databases
+(which db-bipp is). In some future release, postgres will stop accepting
+the backslash format of escape, and only support the SQL standard
+(E'foo'). This warning is against FUTURE incompatibility. However, in
+8.1.X, the SQL standard is not supported. The only common escape format
+between the two versions is the backslash version.
+
+Thus, the only way to have Bruce work against both versions of the
+database will generate this warning on the 8.2.X database.
+
+The warning can be suppressed by setting escape_string_warning = off in
+postgresql.conf
+
+Bob.
+
+On Oct 31, 2007, at 3:34 PM, Metin Ozisik wrote:
+
+Bob, can would you take a look at this. They are coming from Bruce:
+
+psql -h db-bimp-mirror -U log bilogdb, schema pglog:
+
+bilogdb=3D# select * from log_view where client=3D'bruce' and ts >
+'20071030' limit 500;
+
+oid | ts | host | client | caddr
+type    command     duration    query_id
+
+query
+
+------------------------------------------------------------
+----------------------------------------+-----------------
+----------------------------------------------------
+
+15964437 | 2007-10-30 14:38:49.082 | db-bipp | bruce | 10.1.163.119
+warning     select  0   158     nonstandard use of \ in a
+string literal at character NUM
+
+ Description    
+   Problem: Bruce daemon code uses non-SQL standard escapes for some queries This warning is issued in the postgresql log when the query is executed: "nonstandard use of \ in a string literal at character NUM" This only occurs against Pg 8.2.X. Workaround: Set escape_string_warning = off in postgresql.conf ------------------------------------------------------------- Subject: RE: Bruce errors/warnings in postgres logs Date: Thu, 1 Nov 2007 00:47:56 -0700 From: "Metin Ozisik" <Metin.Ozisik@connexuscorp.com> To: "Robert A. Klahn" <Robert.Klahn@connexuscorp.com> I was musing over what we did during the bipp migration for the common scripts we used. It just occurred to me, escape string syntax 'E' takes care of the issue and you'd be compatible in both versions. i.e. select E'foo\'bar' and even if there is no escape, that's not a problem ________________________________ From: Robert A. Klahn Robert.Klahn@connexuscorp.com Sent: Wednesday, October 31, 2007 4:11 PM To: Metin Ozisik Subject: Re: Bruce errors/warnings in postgres logs "nonstandard use of \....." should only be showing up in 8.2.X databases (which db-bipp is). In some future release, postgres will stop accepting the backslash format of escape, and only support the SQL standard (E'foo'). This warning is against FUTURE incompatibility. However, in 8.1.X, the SQL standard is not supported. The only common escape format between the two versions is the backslash version. Thus, the only way to have Bruce work against both versions of the database will generate this warning on the 8.2.X database. The warning can be suppressed by setting escape_string_warning = off in postgresql.conf Bob. On Oct 31, 2007, at 3:34 PM, Metin Ozisik wrote: Bob, can would you take a look at this. They are coming from Bruce: psql -h db-bimp-mirror -U log bilogdb, schema pglog: bilogdb=3D# select * from log_view where client=3D'bruce' and ts > '20071030' limit 500; oid | ts | host | client | caddr
+type    command     duration    query_id
+query ------------------------------------------------------------ ----------------------------------------+----------------- ---------------------------------------------------- 15964437 | 2007-10-30 14:38:49.082 | db-bipp | bruce | 10.1.163.119
+warning     select  0   158     nonstandard use of \ in a string literal at character NUM
+    Show »
+
+ All     Comments    Work Log    Change History           Sort Order: [Ascending order - Click to sort in descending order]
+[ Permlink | « Hide ]
+Robert Klahn - 05/Dec/07 01:01 PM
+believed incidentally fixed in 1.5
+[ Show » ]
+Robert Klahn - 05/Dec/07 01:01 PM believed incidentally fixed in 1.5
+
