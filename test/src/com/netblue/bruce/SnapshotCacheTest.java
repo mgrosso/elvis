@@ -174,7 +174,7 @@ public class SnapshotCacheTest extends ReplicationTest
         c.setAutoCommit(autoCommit);
     }
 
-    @Test
+    //    @Test
     public void testMultithreaded() throws InterruptedException, SQLException, IOException
     {
         logger.debug("TEST: testMultithreaded");
