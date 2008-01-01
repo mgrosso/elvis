@@ -99,6 +99,9 @@
     <target name="release" depends="clean, jar, test, docs">
         <property name="dir.package" location="${dir.release}/bruce-${bruce.version}"/>
         <mkdir dir="${dir.package}"/>
+        <copy todir="${dir.package}">
+            <fileset dir="." includes="LICENSE.TXT"/>
+        </copy>
         <copy todir="${dir.release}">
             <fileset dir="build" includes="coverage/**/*"/>
             <fileset dir="docs" includes="javadoc/**/*"/>
@@ -119,6 +122,7 @@
                 <include name="lib/activemq/**/*.jar"/>
                 <include name="lib/dbunit-2.2.jar"/>
                 <include name="lib/junit-4.1.jar"/>
+                <include name="lib/LICENSE.TXT"/>
             </fileset>
         </copy>
 <!--
