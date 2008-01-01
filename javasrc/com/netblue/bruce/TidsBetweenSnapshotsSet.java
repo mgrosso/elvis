@@ -56,6 +56,25 @@ public class TidsBetweenSnapshotsSet implements SortedSet<TransactionID> {
 	}
     }
 
+    // Override Object.toString()
+
+    /**
+     * {@inheritDoc}
+     */
+    public String toString() {
+	String retval = "";
+	for (TransactionID i=s1.getMinXid();i.compareTo(s2.getMaxXid())<0;i=i.nextNormal()) {
+	    if (s1.transactionIDGE(i) && s2.transactionIDLT(i) && (!removedElements.contains(i))) {
+		if (retval.equals("")) {
+		    retval=i.toString();
+		} else {
+		    retval=retval+","+i.toString();
+		}
+	    }
+	}
+	return retval;
+    }
+
     // Interface java.util.SortedSet<E> methods
 
     /**

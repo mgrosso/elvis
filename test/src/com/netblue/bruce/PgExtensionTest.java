@@ -306,6 +306,10 @@ public class PgExtensionTest extends ReplicationTest
         connection.setAutoCommit(false);
         Statement s = connection.createStatement();
         connection.setSavepoint();
+	// One standalone snapshot, to make sure last update get applied to slave
+	s.execute("select bruce.logsnapshot()");
+	connection.commit();
+        connection.setSavepoint();
         // Get last applied slave snapshot
         ResultSet rs = TestDatabaseHelper.executeQueryAndLog(s,"select * from slavesnapshotstatus where clusterid = "+clusterID);
         rs.next();

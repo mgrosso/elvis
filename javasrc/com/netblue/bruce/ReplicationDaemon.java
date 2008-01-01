@@ -102,8 +102,11 @@ public final class ReplicationDaemon implements Runnable
             throw new ClusterInitializationException("Cannot run replication daemon without a valid cluster configuration and snapshot cache");
         }
         logSwitchRunner = new LogSwitchThread(properties, masterDataSource);
-        logSwitchThread = new Thread(logSwitchRunner);
+        logSwitchThread = new Thread(logSwitchRunner,"LogSwitch");
         logSwitchThread.start();
+	generateSnapshotRunner = new GenerateSnapshotThread(properties, masterDataSource);
+	generateSnapshotThread = new Thread(generateSnapshotRunner,"GenerateSnapshot");
+	generateSnapshotThread.start();
         slaves = slaveFactory.spawnSlaves();
     }
 
@@ -123,16 +126,21 @@ public final class ReplicationDaemon implements Runnable
      */
     public void shutdown()
     {
-        if (logSwitchThread != null)
-        {
-            try
-            {
+	try {
+	    if (logSwitchThread != null) {
                 logSwitchRunner.shutdown();
                 logSwitchThread.join();
-                slaveFactory.shutdown();
-            }
-            catch (InterruptedException e) { }
-        }
+	    }
+	} catch (InterruptedException e) { }
+	try {
+	    if (generateSnapshotThread != null) {
+                generateSnapshotRunner.shutdown();
+                generateSnapshotThread.join();
+	    }
+	} catch (InterruptedException e) { }
+	if (slaveFactory != null) {
+	    slaveFactory.shutdown();
+	}
     }
 
 
@@ -140,6 +148,8 @@ public final class ReplicationDaemon implements Runnable
     private SlaveFactory slaveFactory;
     private Thread logSwitchThread;
     private LogSwitchThread logSwitchRunner;
+    private Thread generateSnapshotThread;
+    private GenerateSnapshotThread generateSnapshotRunner;
     private final BruceProperties properties;
     private final ClusterFactory clusterFactory;
     private final BasicDataSource masterDataSource = new BasicDataSource();

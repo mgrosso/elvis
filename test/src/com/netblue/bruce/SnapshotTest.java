@@ -22,7 +22,7 @@
 */
 package com.netblue.bruce;
 
-import org.apache.log4j.BasicConfigurator;
+import org.apache.log4j.*;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import org.junit.Before;
@@ -34,7 +34,7 @@ import java.util.TreeSet;
 public class SnapshotTest
 {
 
-    // --Commented out by Inspection (3/20/07 4:15 PM):private static final Logger logger = Logger.getLogger(SnapshotTest.class.getName());
+    private static final Logger logger = Logger.getLogger(SnapshotTest.class.getName());
     private final Snapshot s1 = new Snapshot(new TransactionID(4), new TransactionID(4), new TransactionID(5), "");
     private final Snapshot s2 = new Snapshot(new TransactionID(6), new TransactionID(6), new TransactionID(7), "");
 
@@ -88,7 +88,7 @@ public class SnapshotTest
     {
         Snapshot s5 = new Snapshot(new TransactionID(10),new TransactionID(10), new TransactionID(20), "11,12,13");
         assertTrue(s5.transactionIDLT(new TransactionID(4))); // Less than min
-        assertTrue(s5.transactionIDLT(new TransactionID(10))); // Equal to min (but not on list)
+        assertFalse(s5.transactionIDLT(new TransactionID(10))); // Equal to min, but current XID
         assertFalse(s5.transactionIDLT(new TransactionID(20))); // Equal to max
         assertFalse(s5.transactionIDLT(new TransactionID(21))); // Greater than max
         assertFalse(s5.transactionIDLT(new TransactionID(11))); // Between, on list
@@ -104,7 +104,7 @@ public class SnapshotTest
     {
         Snapshot s5 = new Snapshot(new TransactionID(10),new TransactionID(10), new TransactionID(20), "11,12,13");
         assertFalse(s5.transactionIDGE(new TransactionID(4))); // Less than min
-        assertFalse(s5.transactionIDGE(new TransactionID(10))); // Equal to min (but not on list)
+        assertTrue(s5.transactionIDGE(new TransactionID(10))); // Equal to min, but current XID
         assertTrue(s5.transactionIDGE(new TransactionID(20))); // Equal to max
         assertTrue(s5.transactionIDGE(new TransactionID(21))); // Greater than max
         assertTrue(s5.transactionIDGE(new TransactionID(11))); // Between, on list
@@ -118,9 +118,32 @@ public class SnapshotTest
     @Test
     public void testTIDsBetweenSnapshots()
     {
+	// A real world example that generated an error during integration testing.
+	Snapshot sI3 = new Snapshot(new TransactionID(13251685),
+				    new TransactionID(13251685),
+				    new TransactionID(13251686),
+				    "");
+	Snapshot sI4 = new Snapshot(new TransactionID(13251735),
+				    new TransactionID(13251735),
+				    new TransactionID(13251736),
+				    "");
+	
+	Snapshot sI5 = new Snapshot(new TransactionID(13251778),
+				    new TransactionID(13251735),
+				    new TransactionID(13251779),
+				    "13251735");
+	Snapshot sI6 = new Snapshot(new TransactionID(13251779),
+				    new TransactionID(13251778),
+				    new TransactionID(13251780),
+				    "13251778");
+	TransactionID tI1 = new TransactionID(13251735);
+	assertTrue(!sI3.tIDsBetweenSnapshots(sI4).contains(tI1));
+	assertTrue(!sI4.tIDsBetweenSnapshots(sI5).contains(tI1));
+	assertTrue(sI5.tIDsBetweenSnapshots(sI6).contains(tI1));
+	// Constructed tests
         SortedSet<TransactionID> ssTid = new TreeSet<TransactionID>();
-        ssTid.add(new TransactionID(5));
-        ssTid.add(new TransactionID(6));
+        ssTid.add(new TransactionID(4));
+	ssTid.add(new TransactionID(5));
         assertTrue(s1.tIDsBetweenSnapshots(s2).equals(ssTid));
         assertTrue(s2.tIDsBetweenSnapshots(s1).equals(ssTid));
         ssTid.clear();
@@ -129,6 +152,7 @@ public class SnapshotTest
         Snapshot s5 = new Snapshot(new TransactionID(17633),new TransactionID(17633), new TransactionID(17634), "");
         Snapshot s6 = new Snapshot(new TransactionID(17635),new TransactionID(17635), new TransactionID(17638), "17635");
         ssTid.clear();
+        ssTid.add(new TransactionID(17633));
         ssTid.add(new TransactionID(17634));
         ssTid.add(new TransactionID(17636));
         ssTid.add(new TransactionID(17637));
@@ -142,11 +166,11 @@ public class SnapshotTest
         ssTid.add(new TransactionID(17641));
         ssTid.add(new TransactionID(17642));
         ssTid.add(new TransactionID(17643));
-        ssTid.add(new TransactionID(17644));
         assertTrue(s5.tIDsBetweenSnapshots(s6).equals(ssTid));
         Snapshot s10 = new Snapshot(new TransactionID(17644),new TransactionID(17644), new TransactionID(17645), "");
         Snapshot s11 = new Snapshot(new TransactionID(17649),new TransactionID(17649), new TransactionID(17660), "17649,17651,17656");
         ssTid.clear();
+        ssTid.add(new TransactionID(17644));
         ssTid.add(new TransactionID(17645));
         ssTid.add(new TransactionID(17646));
         ssTid.add(new TransactionID(17647));

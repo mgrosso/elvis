@@ -89,6 +89,7 @@ public class Snapshot implements Comparable, Serializable
         this.minXid = minTID;
         this.maxXid = maxTID;
         this.inProgressXids = inFlightTIDs;
+	this.inProgressXids.add(this.currentXid);
         if (this.maxXid.compareTo(this.minXid) != 1)
         {
             throw new IllegalArgumentException("Max TransactionID must be greater than Min TransactionID");
@@ -207,7 +208,7 @@ public class Snapshot implements Comparable, Serializable
      */
     public boolean transactionIDLT(TransactionID tid)
     {
-        return tid.compareTo(minXid) < 0 || tid.compareTo(maxXid) < 0 && !inProgressXids.contains(tid);
+        return tid.compareTo(minXid) < 0 || (tid.compareTo(maxXid) < 0 && !inProgressXids.contains(tid));
     }
 
     /**
@@ -218,7 +219,7 @@ public class Snapshot implements Comparable, Serializable
      */
     public boolean transactionIDGE(TransactionID tid)
     {
-        return tid.compareTo(maxXid) >= 0 || tid.compareTo(minXid) >= 0 && inProgressXids.contains(tid);
+        return tid.compareTo(maxXid) >= 0 || (tid.compareTo(minXid) >= 0 && inProgressXids.contains(tid));
     }
 
     /**
