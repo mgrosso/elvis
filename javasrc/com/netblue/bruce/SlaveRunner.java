@@ -146,6 +146,7 @@ public class SlaveRunner implements Runnable
     {
         theOneConnection = dataSource.getConnection();
         theOneConnection.setAutoCommit(false);
+        theOneConnection.setTransactionIsolation(Connection.TRANSACTION_REPEATABLE_READ);
         try
         {
             PGConnection theOneConnectionPg =
