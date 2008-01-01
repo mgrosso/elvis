@@ -92,7 +92,8 @@ public class OneAndOnlyOneMasterPerClusterAcceptanceTest extends ReplicationTest
         // Run the main here
         BasicConfigurator.resetConfiguration();
         com.netblue.bruce.admin.Main.main(new String[]{"-data",
-                                                       "test/data/admin-test-setup.xml",
+                                                       TestDatabaseHelper.getTestDataDir()+ 
+						       "/admin-test-setup.xml",
                                                        "-operation",
                                                        "INSERT",
                                                        "-url",
@@ -100,8 +101,8 @@ public class OneAndOnlyOneMasterPerClusterAcceptanceTest extends ReplicationTest
 
         BasicConfigurator.resetConfiguration();
         com.netblue.bruce.admin.Main.main(new String[]{"-data",
-                                                       "test/data/" +
-                                                               "one-and-only-one-master-add.xml",
+                                                       TestDatabaseHelper.getTestDataDir()+ 
+						       "one-and-only-one-master-add.xml",
                                                        "-operation",
                                                        "INSERT",
                                                        "-url",
