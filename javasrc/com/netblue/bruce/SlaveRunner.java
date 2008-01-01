@@ -381,35 +381,36 @@ public class SlaveRunner implements Runnable
      *
      * @return the next Snapshot when it becomes available
      */
-    private Snapshot getNextSnapshot()
-    {
+    private Snapshot getNextSnapshot() {
         LOGGER.trace("Getting next snapshot");
 	Snapshot retVal = null;
         final Snapshot processedSnapshot = getLastProcessedSnapshot();	
 	try {
 	    Connection masterC = masterDataSource.getConnection();
-	    PreparedStatement ps = masterC.prepareStatement(plusNSnapshotQuery);
-	    ps.setLong(1,processedSnapshot.getCurrentXid().getLong());
-	    ResultSet rs;
-	    for (long l:new long[]{500L,250L,125L,100L,75L,50L,25L,10L,5L,4L,3L,2L,1L}) {
-		LOGGER.trace("trying lastProcessedSnapshot +"+l);
-		retVal = null;
-		ps.setLong(2,l);
-		rs=ps.executeQuery();
-		if (rs.next()) {
-		    retVal = new Snapshot(new TransactionID(rs.getLong("current_xaction")),
-					  new TransactionID(rs.getLong("min_xaction")),
-					  new TransactionID(rs.getLong("max_xaction")),
-					  rs.getString("outstanding_xactions"));
-		    LOGGER.trace("Retrived "+retVal);
-		    if (snapshotLT(processedSnapshot,retVal)) {
-			break;
+	    try {
+		PreparedStatement ps = masterC.prepareStatement(plusNSnapshotQuery);
+		ps.setLong(1,processedSnapshot.getCurrentXid().getLong());
+		ResultSet rs;
+		for (long l:new long[]{500L,250L,125L,100L,75L,50L,25L,10L,5L,4L,3L,2L,1L}) {
+		    LOGGER.trace("trying lastProcessedSnapshot +"+l);
+		    retVal = null;
+		    ps.setLong(2,l);
+		    rs=ps.executeQuery();
+		    if (rs.next()) {
+			retVal = new Snapshot(new TransactionID(rs.getLong("current_xaction")),
+					      new TransactionID(rs.getLong("min_xaction")),
+					      new TransactionID(rs.getLong("max_xaction")),
+					      rs.getString("outstanding_xactions"));
+			LOGGER.trace("Retrived "+retVal);
+			if (snapshotLT(processedSnapshot,retVal)) {
+			    break;
+			} else {
+			    LOGGER.trace("However, retrived snapshot less than lastProcessedSnapshot");
+			    retVal=null;
+			}
 		    } else {
-			LOGGER.trace("However, retrived snapshot less than lastProcessedSnapshot");
-			retVal=null;
+			LOGGER.trace("No snapshot >= lastProcessedSnapshot +"+l);
 		    }
-		} else {
-		    LOGGER.trace("No snapshot >= lastProcessedSnapshot +"+l);
 		}
 	    } finally { masterC.close(); }
 	} catch (SQLException e) {
@@ -417,6 +418,7 @@ public class SlaveRunner implements Runnable
 	}
 	return retVal;
     }
+
 
     private boolean snapshotLT(Snapshot lesserSnapshot, Snapshot greaterSnapshot) {
 	if (lesserSnapshot.getMinXid().equals(greaterSnapshot.getMinXid())) {
