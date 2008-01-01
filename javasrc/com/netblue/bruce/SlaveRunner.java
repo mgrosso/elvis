@@ -411,8 +411,6 @@ public class SlaveRunner implements Runnable
 		} else {
 		    LOGGER.trace("No snapshot >= lastProcessedSnapshot +"+l);
 		}
-	    }
-	    try {
 	    } finally { masterC.close(); }
 	} catch (SQLException e) {
 	    LOGGER.info("Can not obtain next Snapshot due to SQLException",e);
@@ -583,7 +581,7 @@ public class SlaveRunner implements Runnable
     
     private static final String plusNSnapshotQuery =
 	"select * from bruce.snapshotlog "+
-	" where current_xaction >= (? + ?) % 4294967296 "+ // 4,294,967,296 == 2^32
+	" where current_xaction >= (? + ?) % 4294967296 "+ // 4,294,967,296 == 2^32, maximum transaction id, wraps around back at this point
 	" order by current_xaction asc limit 1";
 
     // How long to wait if a 'next' snapshot is unavailable, in miliseconds
