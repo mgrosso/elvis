@@ -55,4 +55,13 @@ public class VersionTest extends ReplicationTest
         Assert.assertTrue("Schema and code version conflict", Version.isSameVersion(TestDatabaseHelper.getTestDataSource()));
         Assert.assertTrue("Schema and code version conflict", Version.isSameVersion(0, 5, 0, "Replication Pre-release Alpha"));
     }
+
+    @Test
+    public void testIsSameVersionForNonExistentDatabase()
+    {
+        Assert.assertFalse("Version.isSameVersion() returned true for a non-existent DB",
+                           Version.isSameVersion(
+                                   TestDatabaseHelper.createDataSource(
+                                           "jdbc:postgresql://localhost:5432/some_db_that_does_not_exist?user=bruce&password=bruce")));
+    }
 }

@@ -83,8 +83,14 @@ public class Version
         {
             try
             {
-                statement.close();
-                connection.close();
+                if (statement != null)
+                {
+                    statement.close();
+                }
+                if (connection != null)
+                {
+                    connection.close();
+                }
             }
             catch (SQLException e)
             {
