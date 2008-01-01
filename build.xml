@@ -154,6 +154,7 @@
     <!-- Jar package                                     -->
     <!-- =============================================== -->
     <target name="jar" description="makes jar" depends="compile, compile-test, make-hibernate-config">
+        <antcall target="schemaexport"/>
         <mkdir dir="${dir.release}"/>
         <jar destfile="${dir.release}/${jarfilename}" basedir="${dir.classes}">
             <manifest>

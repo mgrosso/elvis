@@ -587,10 +587,8 @@ public class SlaveRunner implements Runnable
     private static final String NEXT_SNAPSHOT_WRAPAROUND_DEFAULT =
 	"select * from bruce.snapshotlog "+
 	" where current_xaction not in (?,?,?) "+
-	"   and current_xaction >= ? "+
-	"   and current_xaction <= ? "+
-	"   and current_xaction >= ? "+
-	"   and current_xaction <= ? "+
+	"   and ((current_xaction >= ? and current_xaction <= ?) "+
+	"     or (current_xaction >= ? and current_xaction <= ?)) "+
 	" order by current_xaction desc limit 1";
 
     private static final String GET_OUTSTANDING_TRANSACTIONS_KEY =
