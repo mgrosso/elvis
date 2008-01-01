@@ -99,14 +99,16 @@
     <target name="release" depends="clean, jar, test, docs">
         <property name="dir.package" location="${dir.release}/bruce-${bruce.version}"/>
         <mkdir dir="${dir.package}"/>
+        <copy todir="${dir.release}">
+            <fileset dir="build" includes="coverage/**/*"/>
+            <fileset dir="docs" includes="javadoc/**/*"/>
+        </copy>
         <copy todir="${dir.package}">
             <fileset dir="." includes="postgres.properties"/>
             <fileset dir="." includes="build-pg-extension.xml"/>
             <fileset dir="." includes="csrc/**/*"/>
             <fileset dir="." includes="bin/**/*"/>
             <fileset dir="." includes="sample/**/*"/>
-            <fileset dir="." includes="docs/javadoc/**/*"/>
-            <fileset dir="build" includes="coverage/**/*"/>
             <fileset dir=".">
                 <include name="schema/*.sql"/>
                 <exclude name="schema/unit-tests-ddl.sql"/>
@@ -133,12 +135,7 @@
         <chmod perm="ug+rx" file="${dir.package}/bin/shutdown.sh"/>
         <chmod perm="ug+rx" file="${dir.package}/bin/admin.sh"/>
         <tar compression="gzip" destfile="${dir.release}/bruce-${bruce.version}.tgz" basedir="${dir.release}" includes="bruce-${bruce.version}/**/*"/>
-	<delete dir="${dir.release}/bin"/>
-        <delete dir="${dir.release}/bin"/>
-        <delete dir="${dir.release}/lib"/>
-        <delete dir="${dir.release}/docs"/>
-        <delete dir="${dir.release}/schema"/>
-        <delete dir="${dir.release}/sample"/>
+        <delete dir="${dir.package}"/>
         <delete file="${dir.release}/bruce.jar"/>
     </target>
 
