@@ -87,7 +87,6 @@ public class CreateSlaveFromTransactionalBackupAcceptanceTest extends Replicatio
 
             // Now use the admin tool to add this new node to the cluster and see how things work out
             String[] args = new String[]{"-data", TestDatabaseHelper.getTestDataDir() + "/admin-test-slave-from-backup.xml",
-                                         "-initnodeschema",
                                          "-initsnapshots", "SLAVE",
                                          "-operation", "INSERT",
                                          "-url", TestDatabaseHelper.buildUrl(TestDatabaseHelper.CONFIG_DB)};
@@ -198,7 +197,6 @@ public class CreateSlaveFromTransactionalBackupAcceptanceTest extends Replicatio
 
             // Now use the admin tool to add this new node to the cluster and see how things work out
             String[] args = new String[]{"-data", TestDatabaseHelper.getTestDataDir() + "/admin-test-slave-from-backup.xml",
-                                         "-initnodeschema",
                                          "-initsnapshots", "NONE",
                                          "-operation", "INSERT",
                                          "-url", TestDatabaseHelper.buildUrl(TestDatabaseHelper.CONFIG_DB)};
