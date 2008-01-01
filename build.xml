@@ -1,0 +1,428 @@
+<project name="bruce" default="compile" basedir=".">
+    <!-- $Id: build.xml 72521 2007-06-27 15:56:40Z lball $ -->
+
+    <!-- override the generic build framework properties with our own before we import the generic build stuff -->
+    <property file="build.properties"/>
+
+    <property name="dir.schema" location="schema"/>
+
+    <!-- override the generic build file's classpath.  it includes waaaayyy too much stuff
+         This classpath override has to be AFTER the import of generic-build.xml.
+	 generic-build.xml (as of this writing) re-imports build.properties, which sets
+	 classpath, and thus would override the override if it was BEFORE the import. -->
+    <path id="classes.path">
+        <pathelement location="${dir.classes}"/>
+    </path>
+    <path id="classpath">
+        <pathelement location="${dir.test.classes}"/>
+        <path refid="classes.path"/>
+        <fileset dir="${dir.lib}">
+            <include name="**/*.jar"/>
+        </fileset>
+    </path>
+
+    <taskdef name="hibernatetool" classname="org.hibernate.tool.ant.HibernateToolTask"
+        classpathref="classpath"/>
+
+    <target name="make-hibernate-config">
+        <property name="hibernate.config" location="${dir.classes}/hibernate.cfg.xml"/>
+        <property name="hibernate.config.template" location="${dir.src}/hibernate.cfg.xml.template"/>
+        <copy file="${hibernate.config.template}" tofile="${hibernate.config}">
+            <filterset>
+              <filter token="DB_URI" value="${postgresql.URL}"/>
+              <filter token="DB_USERNAME" value="${user.name}"/>
+            </filterset>
+        </copy>
+    </target>
+
+    <target name="schemaexport" depends="compile, make-hibernate-config">
+        <property name="hibernate.connection.url" value="${postgresql.URL}"/>
+        <hibernatetool destdir="${dir.schema}">
+            <annotationconfiguration configurationFile="${hibernate.config}"/>
+            <hbm2ddl
+                drop="true"
+                create="true"
+                export="true"
+                outputfilename="cluster-ddl.sql"
+                delimiter=";"
+                format="true"/>
+        </hibernatetool>
+    </target>
+
+    <target name="clean" description="Cleans ${dir.classes}">
+        <delete dir="${dir.build}"/>
+        <delete dir="${dir.release}"/>
+    </target>
+
+    <!-- =============================================== -->
+    <!-- Compile package                                 -->
+    <!-- =============================================== -->
+    <target name="compile" description="Compiles java source">
+        <mkdir dir="${dir.classes}"/>
+        <copy todir="${dir.classes}">
+            <fileset dir="${dir.src}"
+                     includes="**/*.properties,**/*.xml,,**/*.template"
+                     excludes="**/*.java"
+                    />
+        </copy>
+        <javac srcdir="${dir.src}" destdir="${dir.classes}" debug="on">
+            <include name="**/*.java"/>
+            <classpath refid="classpath"/>
+            <compilerarg compiler="modern" value="-Xlint"></compilerarg>
+        </javac>
+    </target>
+
+    
+    <!-- =============================================== -->
+    <!-- Jar package                                     -->
+    <!-- =============================================== -->
+    <target name="jar" description="makes jar" depends="compile, make-hibernate-config">
+        <mkdir dir="${dir.release}"/>
+        <copy file="${dir.schema}/cluster-ddl.sql" todir="${dir.classes}"/>
+        <copy file="${dir.schema}/replication-ddl.sql" todir="${dir.classes}"/>
+        <jar destfile="${dir.release}/${jarfilename}" basedir="${dir.classes}">
+            <manifest>
+                <attribute name="Vendor" value="Vendare NetBlue, Inc"/>
+                <attribute name="Vendor-Id" value="com.netblue"/>
+                <attribute name="Build-ID" value="${label}"/>
+                <attribute name="Build-Date" value="${cvstimestamp}"/>
+            </manifest>
+        </jar>
+        <echo message="created ${dir.release}/${jarfilename}"/>
+    </target>
+    
+    <target name="release" depends="clean, jar, test, docs">
+        <copy todir="${dir.release}">
+            <fileset dir="." includes="csrc/**/*"/>
+            <fileset dir="." includes="bin/**/*"/>
+            <fileset dir="." includes="sample/**/*"/>
+            <fileset dir="." includes="docs/javadoc/**/*"/>
+            <fileset dir="build" includes="coverage/**/*"/>
+            <fileset dir=".">
+                <include name="schema/*.sql"/>
+                <exclude name="schema/unit-tests-ddl.sql"/>
+            </fileset>
+            <fileset dir=".">
+                <include name="lib/*.jar"/>
+                <include name="lib/hibernate/**/*.jar"/>
+                <include name="lib/activemq/**/*.jar"/>
+                <include name="lib/dbunit-2.2.jar"/>
+                <include name="lib/junit-4.1.jar"/>
+            </fileset>
+        </copy>
+<!--
+        <loadfile property="admin.options" srcfile="docs/com.netblue.bruce.admin.Options.html"/>
+        <copy todir="${dir.release}">
+            <fileset dir="." includes="docs/*.html"/>
+            <filterset >
+                <filter token="OPTIONS" value="${admin.options}"/>
+            </filterset>
+        </copy>
+-->
+
+        <chmod perm="ug+rx" file="${dir.release}/bin/startup.sh"/>
+        <chmod perm="ug+rx" file="${dir.release}/bin/shutdown.sh"/>
+        <chmod perm="ug+rx" file="${dir.release}/bin/admin.sh"/>
+        <tar compression="gzip" destfile="${dir.release}/bruce-0.1a.tgz" basedir="${basedir}" includes="release/**/*"/>
+<!--        <delete dir="${dir.release}/bin"/>
+        <delete dir="${dir.release}/bin"/>
+        <delete dir="${dir.release}/lib"/>
+        <delete dir="${dir.release}/docs"/>
+        <delete dir="${dir.release}/schema"/>
+        <delete dir="${dir.release}/sample"/>
+        <delete file="${dir.release}/bruce.jar"/> -->
+    </target>
+
+    <!-- =============================================== -->
+    <!-- Creates Java Doc                                -->
+    <!-- =============================================== -->
+    <target name="docs" description="Generates Javadoc">
+        <mkdir dir="${dir.docs}"/>
+        <javadoc packagenames="${jdoc.packages}"
+                 sourcepath="${dir.src}"
+                 destdir="${dir.docs}"
+                 author="true"
+                 version="true"
+                 use="true"
+                 windowtitle="${jdoc.title}">
+            <classpath refid="classpath"/>
+        </javadoc>
+    </target>
+
+    <!-- =============================================== -->
+    <!-- Compile tests                                   -->
+    <!-- =============================================== -->
+    <target name="compile-test" description="Compiles junit tests" depends="compile">
+        <mkdir dir="${dir.test.classes}"/>
+        <copy todir="${dir.classes}">
+            <fileset dir="${dir.test}"
+                     includes="**/*.properties,**/*.xml,,**/*.template"
+                     excludes="**/*.java"
+                    />
+        </copy>
+        <javac srcdir="${dir.test}" destdir="${dir.classes}" debug="on">
+            <include name="**/*.java"/>
+            <classpath refid="classpath"/>
+            <compilerarg compiler="modern" value="-Xlint"></compilerarg>
+        </javac>
+    </target>
+    
+
+    <!-- override the generic test target
+         For this to work, you need a copy of junit.jar in $HOME/.ant/lib, at least under Darwin (AKA Mac OS X)
+	 Other options are available. See the discussion under "Use of external tasks" at 
+	 http://ant.apache.org/manual/using.html#tasks  -->
+    <target name="test"
+            depends="jar, compile-test, install_pg_extention"
+            description="overrides the generic test target">
+
+        <!-- Load the test schema and setup system properties for test data -->
+        <echo message="Loading test schema"/>
+        <antcall target="schemaexport"/>
+        <mkdir dir="${dir.junit.output}/xml"/>
+        <property name="dir.test.data" location="test/data"/>
+        <property name="dir.schema" location="schema"/>
+        <property name="dir.coverage" location="${dir.build}/coverage"/>
+
+        <!-- Prime the code coverage task -->
+        <!-- directory that contains emma.jar and emma_ant.jar: -->
+        <property name="emma.dir" value="${dir.lib}/emma"/>
+        <path id="emma.lib">
+            <pathelement location="${emma.dir}/emma.jar"/>
+            <pathelement location="${emma.dir}/emma_ant.jar"/>
+        </path>
+
+        <taskdef resource="emma_ant.properties" classpathref="emma.lib"/>
+        <property name="emma.enabled" value="true"/>
+
+
+        <!-- Instrument our classes -->
+        <property name="dir.instrumented.classes" location="${dir.build}/instrumented-classes"/>
+        <mkdir dir="${dir.instrumented.classes}"/>
+
+        <emma enabled="${emma.enabled}">
+            <instr instrpathref="classes.path"
+                   destdir="${dir.instrumented.classes}"
+                   metadatafile="${dir.coverage}/metadata.emma"
+                   merge="true"
+                   mode="overwrite">
+                <filter includes="*netblue*"/>
+                <filter excludes="*Test*"/>
+            </instr>
+        </emma>
+
+        <junit printsummary="yes" haltonfailure="no" fork="yes" forkmode="perTest" showoutput="yes">
+            <!-- lots o' system props -->
+            <jvmarg value="-Xmx512m"/>
+	        <jvmarg value="-Dlog4j.configuration=${basedir}/bin/log4j.properties"/>
+            <jvmarg value="-Dpostgresql.adminURL=${postgresql.adminURL}"/>
+            <jvmarg value="-Dpostgresql.db_name=${postgresql.db_name}"/>
+            <jvmarg value="-Dpostgresql.URL=${postgresql.URL}"/>
+            <jvmarg value="-Dpostgresql.bin=${postgresql.bin}"/>
+            <jvmarg value="-Dhibernate.connection.url=${postgresql.URL}"/>
+            <jvmarg value="-Dhibernate.connection.username=${user.name}"/>
+            <jvmarg value="-Dhibernate.dialect=org.hibernate.dialect.PostgreSQLDialect"/>
+            <jvmarg value="-Ddir.test.data=${dir.test.data}"/>
+            <jvmarg value="-Ddir.schema=${dir.schema}"/>
+            <jvmarg value="-Demma.coverage.out.file=${dir.coverage}/coverage.emma"/>
+            <jvmarg value="-Demma.coverage.out.merge=true"/>
+            <jvmarg value="-Dbruce.nextSnapshotUnavailableSleep=1000"/>
+            <!-- set class path ...  be user instrumented classes come first -->
+            <classpath location="${dir.instrumented.classes}"/>
+            <classpath refid="classpath"/>
+            <classpath refid="emma.lib"/>
+            <formatter type="xml"/>
+
+            <batchtest fork="yes" todir="${dir.junit.output}/xml">
+                <fileset dir="test/src">
+                    <include name="**/*Test.java"/>
+                </fileset>
+            </batchtest>
+        </junit>
+
+        <!-- Generate the coverage report -->
+        <emma enabled="${emma.enabled}">
+            <report sourcepath="${dir.src}">
+                <fileset dir="${dir.coverage}">
+                    <include name="*.emma"/>
+                </fileset>
+
+                <txt outfile="${dir.coverage}/coverage.txt"/>
+                <html outfile="${dir.coverage}/coverage.html"/>
+            </report>
+        </emma>
+    </target>
+
+    <target name="test-reports" depends="test" description="Creates HTML reports of the JUnit tests">
+        <mkdir dir="${dir.junit.output}/html"/>
+        <junitreport todir="${dir.junit.output}/xml">
+            <fileset dir="${dir.junit.output}/xml">
+                <include name="TEST-*.xml"/>
+            </fileset>
+            <report todir="${dir.junit.output}/html"/>
+        </junitreport>
+    </target>
+
+    <target name="test-one-class"
+            depends="jar, compile-test, install_pg_extention"
+            description="test one junit class, mainly for debugging, because some of the tests are getting long running">
+	<fail message="property test.this.class must be set (ant -Dtest.this.class=[class name] test-one-class" unless="test.this.class"/>
+        <antcall target="schemaexport"/>
+        <mkdir dir="${dir.junit.output}/xml"/>
+        <property name="dir.test.data" location="test/data"/>
+        <property name="dir.schema" location="schema"/>
+        <junit printsummary="yes" haltonfailure="no" fork="yes" showoutput="yes">
+	    <jvmarg value="-Xmx512m"/>
+	    <jvmarg value="-Dlog4j.configuration=${basedir}/bin/log4j.properties"/>
+            <jvmarg value="-Dpostgresql.adminURL=${postgresql.adminURL}"/>
+            <jvmarg value="-Dpostgresql.db_name=${postgresql.db_name}"/>
+            <jvmarg value="-Dpostgresql.URL=${postgresql.URL}"/>
+            <jvmarg value="-Dhibernate.connection.url=${postgresql.URL}"/>
+            <jvmarg value="-Dhibernate.connection.username=${user.name}"/>
+            <jvmarg value="-Dhibernate.dialect=org.hibernate.dialect.PostgreSQLDialect"/>
+            <jvmarg value="-Ddir.test.data=${dir.test.data}"/>
+            <jvmarg value="-Ddir.schema=${dir.schema}"/>
+            <classpath refid="classpath"/>
+            <formatter type="plain"/>
+
+            <batchtest fork="yes">
+                <fileset dir="test/src">
+                    <include name="**/${test.this.class}.java"/>
+                </fileset>
+            </batchtest>
+        </junit>
+    </target>	  
+
+
+    <!-- A clone of generic_build.xml's "compile" target. For reasons I cant quite determine this
+         moment, ANT does not think that the Mac OS X (aka Darwin) javac is "modern", and thus
+	 will not pass it -Xlint. Thus, this hack (and a hack it is) -->
+    <target name="compile-mac" 
+            description="Compiles java source, forcing -Xlint, which seems to be needed on Apple's javac, cause ANT doe snot think its 'modern'">
+        <mkdir dir="${dir.classes}"/>
+        <mkdir dir="${dir.test.classes}"/>
+        <copy todir="${dir.classes}">
+            <fileset dir="${dir.src}"
+                     includes="**/*.properties,**/*.xml,,**/*.template"
+                     excludes="**/*.java"
+                    />
+            <fileset dir="${dir.test}"
+                     includes="**/*.properties,**/*.xml,,**/*.template"
+                     excludes="**/*.java"
+                    />
+        </copy>
+        <javac srcdir="${dir.src}" destdir="${dir.classes}" debug="on">
+            <include name="**/*.java"/>
+            <classpath refid="classpath"/>
+            <compilerarg value="-Xlint"/>
+        </javac>
+        <javac srcdir="${dir.test}" destdir="${dir.classes}" debug="on">
+            <include name="**/*.java"/>
+            <classpath refid="classpath"/>
+            <compilerarg value="-Xlint"/>
+        </javac>
+    </target>
+
+    <target name="cli-docs" description="Generates documentation for the admin CLI">
+        <property name="cli.doc.dir" location="${dir.docs}/../"/>
+        <java jar="${dir.lib}/args4j-tools-2.0.7.jar" fork="true">
+            <arg value="-o"/>
+            <arg value="docs"/>
+            <arg value="-mode"/>
+            <arg value="HTML"/>
+            <arg value="${dir.src}/com/netblue/bruce/admin/Options.java"/>
+        </java>
+    </target>
+
+    <!-- Use the JAR file, rather than the directory of classes, when running the daemons
+         Also, dont recurse in the lib directory, which includes activemq (and anything else
+	 that we might point to the current version using symbolic links) at least twice. -->
+    <path id="run_classpath">
+      <pathelement location="${dir.release}/${jarfilename}"/>
+      <fileset dir="${dir.lib}" includes="*.jar"/>
+      <fileset dir="${dir.lib}/activemq" includes="*.jar"/>
+    </path>
+
+    <target name="must_be_unix">
+        <fail message="must run on a UNIX or UNIX like OS">
+            <condition>
+                <not>
+                    <os family="unix"/>
+                </not>
+            </condition>
+        </fail>
+    </target>
+
+    <target name="database_up?" depends="must_be_unix">
+        <condition property="database_up">
+            <and>
+                <socket server="localhost" port="${postgresql.port}"/>
+                <available file="${postgresql.dir}/postmaster.pid"/>
+            </and>
+        </condition>
+    </target>
+
+    <target name="down_database" depends="database_up?, must_be_unix" if="database_up">
+        <exec executable="head" searchpath="true" outputproperty="pg_pid">
+            <arg value="-1"/>
+            <arg path="${postgresql.dir}/postmaster.pid"/>
+        </exec>
+        <exec executable="kill" searchpath="true">
+            <!-- Forcefuly disconnect all clients, then terminate. (AKA "fast" mode) -->
+            <arg value="-INT"/>
+            <arg value="${pg_pid}"/>
+        </exec>
+        <waitfor>
+            <not>
+                <or>
+                    <socket server="localhost" port="${postgresql.port}"/>
+                    <available file="${postgresql.dir}/postmaster.pid"/>
+                </or>
+            </not>
+        </waitfor>
+    </target>
+
+    <target name="up_database" depends="database_up?, must_be_unix" unless="database_up">
+        <exec executable="${postgresql.bin}/postmaster" spawn="true">
+            <arg value="-D${postgresql.dir}"/>
+        </exec>
+        <waitfor>
+            <and>
+                <socket server="localhost" port="${postgresql.port}"/>
+                <available file="${postgresql.dir}/postmaster.pid"/>
+            </and>
+        </waitfor>
+    </target>
+
+    <target name="install_pg_extention" depends="must_be_unix">
+        <antcall target="down_database" InheritAll="false"/>
+        <exec executable="${postgresql.bin}/pg_config" outputproperty="pg_path">
+            <arg value="--bindir"/>
+        </exec>
+        <exec executable="bash" searchpath="true">
+            <arg value="-c"/>
+            <!-- Our postgresql needs to preceed any other installed postgresql in the path -->
+            <arg value="export PATH=${pg_path}:$PATH; cd ${basedir}/csrc ; make install"/>
+        </exec>
+        <antcall target="up_database" InheritAll="false"/>
+    </target>
+
+    <target name="pg_extension_demo"
+            depends="jar, compile-test, install_pg_extention"
+	    description="Demonstrate the functionality of the postgresql extension">
+      <property name="pg_extension_demo" value="true"/>
+      <junit printsummary="yes" haltonfailure="no" fork="yes" showoutput="no">
+        <jvmarg value="-Dpostgresql.adminURL=${postgresql.adminURL}"/>
+        <jvmarg value="-Dpostgresql.db_name=${postgresql.db_name}"/>
+        <jvmarg value="-Dpostgresql.URL=${postgresql.URL}"/>
+	<jvmarg value="-Dpg_extension_demo=true"/>
+<!--	<jvmarg value="-Dpg_extension_demo=DEBUG"/> -->
+<!--	<jvmarg value="-Dpg_extension_demo=TRACE"/> -->
+        <classpath refid="classpath"/>
+	<formatter type="plain" usefile="false"/>
+	<test name="com.netblue.bruce.PgExtensionTest"/>
+      </junit>
+    </target>
+
+</project>
+

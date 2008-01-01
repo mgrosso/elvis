@@ -1,0 +1,6 @@
+# To set these properties execute the following command
+# svn propset svn:externals -F ./externals.txt .
+#
+# generic-build svn+ssh://svn.yfdirect.net/var/svn/netblue/stage/commons/build-template
+# Use more recent version of activemq than is available in yfroot
+#lib/activemq svn+ssh://svn.yfdirect.net/var/svn/netblue/stage/yfroot/lib/external/activemq-4.0.1
