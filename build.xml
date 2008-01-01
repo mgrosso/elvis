@@ -124,13 +124,13 @@
         <chmod perm="ug+rx" file="${dir.release}/bin/shutdown.sh"/>
         <chmod perm="ug+rx" file="${dir.release}/bin/admin.sh"/>
         <tar compression="gzip" destfile="${dir.release}/bruce-0.1a.tgz" basedir="${basedir}" includes="release/**/*"/>
-<!--        <delete dir="${dir.release}/bin"/>
+	<delete dir="${dir.release}/bin"/>
         <delete dir="${dir.release}/bin"/>
         <delete dir="${dir.release}/lib"/>
         <delete dir="${dir.release}/docs"/>
         <delete dir="${dir.release}/schema"/>
         <delete dir="${dir.release}/sample"/>
-        <delete file="${dir.release}/bruce.jar"/> -->
+        <delete file="${dir.release}/bruce.jar"/>
     </target>
 
     <!-- =============================================== -->
@@ -213,8 +213,8 @@
 
         <junit printsummary="yes" haltonfailure="no" fork="yes" forkmode="perTest" showoutput="yes">
             <!-- lots o' system props -->
-            <jvmarg value="-Xmx512m"/>
-	        <jvmarg value="-Dlog4j.configuration=${basedir}/bin/log4j.properties"/>
+            <jvmarg value="-Xmx1g"/>
+	    <jvmarg value="-Dlog4j.configuration=${basedir}/bin/log4j.properties"/>
             <jvmarg value="-Dpostgresql.adminURL=${postgresql.adminURL}"/>
             <jvmarg value="-Dpostgresql.db_name=${postgresql.db_name}"/>
             <jvmarg value="-Dpostgresql.URL=${postgresql.URL}"/>
