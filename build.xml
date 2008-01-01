@@ -96,12 +96,16 @@
         <echo message="created ${dir.release}/${jarfilename}"/>
     </target>
     
-    <target name="release" depends="clean, jar, test, docs">
+    <target name="release" depends="clean, jar, docs">
         <property name="dir.package" location="${dir.release}/bruce-${bruce.version}"/>
         <mkdir dir="${dir.package}"/>
         <copy todir="${dir.package}">
             <fileset dir="." includes="LICENSE.TXT"/>
         </copy>
+        <copy todir="${dir.package}">
+            <fileset dir="${dir.release}" includes="bruce.jar"/>
+        </copy>
+
         <copy todir="${dir.release}">
             <fileset dir="build" includes="coverage/**/*"/>
             <fileset dir="docs" includes="javadoc/**/*"/>
