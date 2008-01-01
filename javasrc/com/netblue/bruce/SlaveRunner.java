@@ -385,62 +385,47 @@ public class SlaveRunner implements Runnable
     {
         LOGGER.trace("Getting next snapshot");
 	Snapshot retVal = null;
-        final Snapshot processedSnapshot = getLastProcessedSnapshot();
-	long nextNormalXID = processedSnapshot.getCurrentXid().nextNormal().getLong();
-	long lastNormalXID = processedSnapshot.getCurrentXid().lastNormal().getLong();
-	LOGGER.trace("processedSnapshot:"+processedSnapshot.getCurrentXid()+
-		     " nextNormalXID:"+nextNormalXID+" lastNormalXID:"+lastNormalXID);
-	// We have to determine possible values for the next XID. There is a detailed 
-	// discussion around the nature of PostgreSQL transaction IDs in 
-	// TransactionID.java, but the short version is this:
-	// TransactionIDs are 32-bit modulo-31 numbers, with 2^31st TransactionIDs 
-	// greater than, and 2^31 TransactionIDs less than any TransactionID. 
-	// Except: Some TransactionIDs are special, and for the purpose of this 
-	// discussion, can be considered always less than our TransactionID
+        final Snapshot processedSnapshot = getLastProcessedSnapshot();	
 	try {
-	    Connection c = masterDataSource.getConnection();
-	    try { // Make sure the connection we just got gets closed
-		PreparedStatement ps;
-		if (nextNormalXID < lastNormalXID) {
-		    // Two cases here. One, where the nextNormalID is less than lastNormalXID, and,
-		    // thus, a simple less than or equals test can be used
-		    LOGGER.trace("simple case");
-		    ps = c.prepareStatement(properties.getProperty(NEXT_SNAPSHOT_SIMPLE_KEY,
-								   NEXT_SNAPSHOT_SIMPLE_DEFAULT));
-		    ps.setLong(1, TransactionID.INVALID);
-		    ps.setLong(2, TransactionID.BOOTSTRAP);
-		    ps.setLong(3, TransactionID.FROZEN);
-		    ps.setLong(4, nextNormalXID);
-		    ps.setLong(5, lastNormalXID);
-		} else {
-		    // Second case is where nextNormalID is greater than lastNormalXID. This occurs
-		    // when the lastNormalXID has wrapped around 2^32. The test here is a little more
-		    // complex, we are looking for snapshots either >=nextNormalXID or <=lastNormalXID
-		    LOGGER.trace("wraparound case");
-		    ps =c.prepareStatement(properties.getProperty(NEXT_SNAPSHOT_WRAPAROUND_KEY,
-								  NEXT_SNAPSHOT_WRAPAROUND_DEFAULT));
-		    ps.setLong(1, TransactionID.INVALID);
-		    ps.setLong(2, TransactionID.BOOTSTRAP);
-		    ps.setLong(3, TransactionID.FROZEN);
-		    ps.setLong(4, nextNormalXID);
-		    ps.setLong(5, TransactionID.MAXNORMAL);
-		    ps.setLong(6, TransactionID.FIRSTNORMAL);
-		    ps.setLong(7, lastNormalXID);
-		}
-		ResultSet rs = ps.executeQuery();
+	    Connection masterC = masterDataSource.getConnection();
+	    PreparedStatement ps = masterC.prepareStatement(plusNSnapshotQuery);
+	    ps.setLong(1,processedSnapshot.getCurrentXid().getLong());
+	    ResultSet rs;
+	    for (long l:new long[]{500L,250L,125L,100L,75L,50L,25L,10L,5L,4L,3L,2L,1L}) {
+		LOGGER.trace("trying lastProcessedSnapshot +"+l);
+		retVal = null;
+		ps.setLong(2,l);
+		rs=ps.executeQuery();
 		if (rs.next()) {
 		    retVal = new Snapshot(new TransactionID(rs.getLong("current_xaction")),
 					  new TransactionID(rs.getLong("min_xaction")),
 					  new TransactionID(rs.getLong("max_xaction")),
 					  rs.getString("outstanding_xactions"));
+		    LOGGER.trace("Retrived "+retVal);
+		    if (snapshotLT(processedSnapshot,retVal)) {
+			break;
+		    } else {
+			LOGGER.trace("However, retrived snapshot less than lastProcessedSnapshot");
+			retVal=null;
+		    }
+		} else {
+		    LOGGER.trace("No snapshot >= lastProcessedSnapshot +"+l);
 		}
-	    } finally {
-		c.close();
 	    }
+	    try {
+	    } finally { masterC.close(); }
 	} catch (SQLException e) {
 	    LOGGER.info("Can not obtain next Snapshot due to SQLException",e);
 	}
 	return retVal;
+    }
+
+    private boolean snapshotLT(Snapshot lesserSnapshot, Snapshot greaterSnapshot) {
+	if (lesserSnapshot.getMinXid().equals(greaterSnapshot.getMinXid())) {
+	    return (lesserSnapshot.getMaxXid().compareTo(greaterSnapshot.getMaxXid())<0);
+	} else {
+	    return (lesserSnapshot.getMinXid().compareTo(greaterSnapshot.getMinXid())<0);
+	}
     }
 
     /**
@@ -595,6 +580,11 @@ public class SlaveRunner implements Runnable
 	"bruce.slave.getOutstandingTransactions";
     private static final String GET_OUTSTANDING_TRANSACTIONS_DEFAULT =
 	"select * from bruce.transactionlog where xaction >= ? and xaction < ? order by rowid asc";
+    
+    private static final String plusNSnapshotQuery =
+	"select * from bruce.snapshotlog "+
+	" where current_xaction >= (? + ?) % 4294967296 "+ // 4,294,967,296 == 2^32
+	" order by current_xaction asc limit 1";
 
     // How long to wait if a 'next' snapshot is unavailable, in miliseconds
     private static final String NEXT_SNAPSHOT_UNAVAILABLE_SLEEP_KEY = "bruce.nextSnapshotUnavailableSleep";
