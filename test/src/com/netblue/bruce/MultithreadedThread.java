@@ -62,6 +62,11 @@ abstract class MultithreadedThread extends Thread {
 	this.results=results;
     }
 
+    public MultithreadedThread (Set<MultithreadedError> results,String name) {
+	super(name);
+	this.results=results;
+    }
+
     public void shutdown() {
 	shutdownThread=true;
     }

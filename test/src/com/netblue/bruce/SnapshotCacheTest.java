@@ -174,7 +174,7 @@ public class SnapshotCacheTest extends ReplicationTest
         c.setAutoCommit(autoCommit);
     }
 
-    //    @Test
+    @Test
     public void testMultithreaded() throws InterruptedException, SQLException, IOException
     {
         logger.debug("TEST: testMultithreaded");
@@ -190,11 +190,11 @@ public class SnapshotCacheTest extends ReplicationTest
         // Set up 1 database update threads (Long running updates)
         for (int i = 0; i < 1; i++) { updateThreads.add(new DBLongUpdateThread(testResults)); }
         // Set up 10 database update threads (Short running updates)
-        for (int i = 0; i < 10; i++) { updateThreads.add(new DBShortUpdateThread(testResults)); }
+        for (int i = 0; i < 1; i++) { updateThreads.add(new DBShortUpdateThread(testResults)); }
         // Set up 10 emulate slave threads
-        for (int i = 0; i < 10; i++)
+        for (int i = 0; i < 1; i++)
         {
-            emulateSlaveThreads.add(new EmulateSlaveThread(testResults, cache));
+            emulateSlaveThreads.add(new EmulateSlaveThread(testResults, cache, "EmulateSlaveThread-"+i));
         }
         // Start each database update thread
         for (MultithreadedThread t : updateThreads) { t.start(); }
@@ -203,7 +203,7 @@ public class SnapshotCacheTest extends ReplicationTest
         // Start up a thread to force a regular snapshot. We are only going to terminate
         // the emulateSlaveThraeds
         // when no changes were applied in the last Snapshot processing loop.
-        MultithreadedThread forceSnapshotThread = new ForceSnapshot(testResults);
+        MultithreadedThread forceSnapshotThread = new ForceSnapshot(testResults,"ForceSnapshot");
         forceSnapshotThread.start();
         Thread.currentThread().sleep(10000L); // run the test for XXXXX
         // Stop database update threads
@@ -217,6 +217,7 @@ public class SnapshotCacheTest extends ReplicationTest
         // terminate when it has run out of transactions to apply.
         for (MultithreadedThread t : emulateSlaveThreads)
         {
+	    logger.trace("shutting down emulate thread:"+t);
             t.shutdown();
             t.join();
         }
@@ -366,9 +367,9 @@ public class SnapshotCacheTest extends ReplicationTest
 
     class ForceSnapshot extends MultithreadedThread
     {
-        public ForceSnapshot(Set<MultithreadedError> results)
+        public ForceSnapshot(Set<MultithreadedError> results,String name)
         {
-            super(results);
+            super(results,name);
         }
 
         public void run()
@@ -393,7 +394,8 @@ public class SnapshotCacheTest extends ReplicationTest
                     c.setSavepoint();
                     TestDatabaseHelper.executeAndLog(c.createStatement(), "select bruce.logsnapshot()");
                     c.commit();
-                    Thread.sleep(100L); // Sleep for a moment before snapshoting again.
+		    logger.trace("commited forced snapshot");
+                    Thread.sleep(1000L); // Sleep for a moment before snapshoting again.
                 }
                 catch (Throwable t)
                 {
@@ -406,9 +408,9 @@ public class SnapshotCacheTest extends ReplicationTest
 
     class EmulateSlaveThread extends MultithreadedThread
     {
-        public EmulateSlaveThread(Set<MultithreadedError> results, SnapshotCache cache)
+        public EmulateSlaveThread(Set<MultithreadedError> results, SnapshotCache cache, String name)
         {
-            super(results);
+            super(results,name);
             this.cache = cache;
             try
             {
@@ -472,9 +474,7 @@ public class SnapshotCacheTest extends ReplicationTest
                 logger.warn("Cannot set autoCommit state on JDBC Connection.  Message: " + e.getLocalizedMessage());
                 e.printStackTrace();
             }
-            while (!(shutdownThread && lastChangeCount == 0 &&
-                    s1 != null && s1.getInFlight() == null &&
-                    s2 != null && s2.getInFlight() == null))
+            while (!(shutdownThread && lastChangeCount == 0 && s1 != null && s2 != null))
             {
                 try
                 {
@@ -504,7 +504,10 @@ public class SnapshotCacheTest extends ReplicationTest
                             e.printStackTrace();
                         }
                         s1 = s2;
-                    }
+                    } else {
+			logger.trace("No next snapshot available. Sleeping for a while....");
+			Thread.sleep(1000L);
+		    }
                 }
                 catch (Throwable t)
                 {
