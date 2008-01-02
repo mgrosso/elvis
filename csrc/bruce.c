@@ -121,6 +121,8 @@ Datum applyLogTransaction(PG_FUNCTION_ARGS) {
   int i;
   int queryResult;
 
+  ereport(DEBUG1,(errmsg_internal("info:%s",tInfoS)));
+
   /* Connect to the Server Programming Interface */
   if (SPI_connect()<0)
     ereport(ERROR,(errmsg_internal("SPI_connect failed in applyLogTransaction()")));
@@ -152,12 +154,15 @@ Datum applyLogTransaction(PG_FUNCTION_ARGS) {
   if (SPI_processed>0) {
     char *bos,*eos, *uidx;
     uidx=SPI_getvalue(SPI_tuptable->vals[0],SPI_tuptable->tupdesc,1);
+    ereport(DEBUG2,(errmsg_internal("p/uidx:%s",uidx)));
     bos=strstr(uidx,"(");
     bos++;
     eos=strstr(bos,")");
     eos[0]='\0';
+    ereport(DEBUG2,(errmsg_internal("bos:%s",bos)));
     for (uCols[uColsCount]=strsep(&bos,", ");uCols[uColsCount];uCols[uColsCount]=strsep(&bos,", ")) {
       if (strlen(uCols[uColsCount])!=0) {
+	ereport(DEBUG2,(errmsg_internal("uCols[%d]:%s",uColsCount,uCols[uColsCount])));
 	uColsCount++;
       }
     }
@@ -181,6 +186,10 @@ Datum applyLogTransaction(PG_FUNCTION_ARGS) {
 	  bindParms++;
 	  sprintf(tempS,"%s$%d",values,bindParms);
 	  strcpy(values,tempS);
+	  ereport(DEBUG1,(errmsg_internal("%s $%d:%s",
+					  colSs[i].colName,
+					  bindParms,
+					  colSs[i].oldColS)));
 	  plan_types[bindParms-1]=getTypeOid(colSs[i].colType);
 	  /* Convert string to a Datum of the right type */
 	  plan_values[bindParms-1]=OidFunctionCall3(colSs[i].typInput,
@@ -218,6 +227,10 @@ Datum applyLogTransaction(PG_FUNCTION_ARGS) {
 	    bindParms++;
 	    sprintf(tempS,"%s%s = $%d",whereC,colSs[i].colName,bindParms);
 	    strcpy(whereC,tempS);
+	    ereport(DEBUG1,(errmsg_internal("%s $%d:%s",
+					    colSs[i].colName,
+					    bindParms,
+					    colSs[i].oldColS)));
 	    plan_types[bindParms-1]=getTypeOid(colSs[i].colType);
 	    plan_values[bindParms-1]=OidFunctionCall3(colSs[i].typInput,
 						      CStringGetDatum(colSs[i].oldColS),
@@ -238,6 +251,10 @@ Datum applyLogTransaction(PG_FUNCTION_ARGS) {
 	  bindParms++;
 	  sprintf(tempS,"%s%s = $%d",query,colSs[i].colName,bindParms);
 	  strcpy(query,tempS);
+	  ereport(DEBUG1,(errmsg_internal("%s $%d:%s",
+					  colSs[i].colName,
+					  bindParms,
+					  colSs[i].newColS)));
 	  plan_types[bindParms-1]=getTypeOid(colSs[i].colType);
 	  plan_values[bindParms-1]=OidFunctionCall3(colSs[i].typInput,
 						    CStringGetDatum(colSs[i].newColS),
@@ -269,18 +286,22 @@ Datum applyLogTransaction(PG_FUNCTION_ARGS) {
 	    bindParms++;
 	    sprintf(tempS,"%s%s = $%d",query,colSs[i].colName,bindParms);
 	    strcpy(query,tempS);
+	    ereport(DEBUG1,(errmsg_internal("%s $%d:%s",
+					    colSs[i].colName,
+					    bindParms,
+					    colSs[i].oldColS)));
 	    plan_types[bindParms-1]=getTypeOid(colSs[i].colType);
 	    plan_values[bindParms-1]=OidFunctionCall3(colSs[i].typInput,
 						      CStringGetDatum(colSs[i].oldColS),
 						      ObjectIdGetDatum(colSs[i].typIOParam),
 						      Int32GetDatum(-1));
 	  }
-	}
-	numUniqueInWhere++;
-	if ((numUniqueInWhere<uColsCount) || 
-	    ((uColsCount == 0) && (i<numCols-1))) {
-	  sprintf(tempS,"%s and ",query);
-	  strcpy(query,tempS);
+	  numUniqueInWhere++;
+	  if ((numUniqueInWhere<uColsCount) || 
+	      ((uColsCount == 0) && (i<numCols-1))) {
+	    sprintf(tempS,"%s and ",query);
+	    strcpy(query,tempS);
+	  }
 	}
       }
     }
@@ -290,6 +311,7 @@ Datum applyLogTransaction(PG_FUNCTION_ARGS) {
     ereport(ERROR,(errmsg_internal("Unknown value for transaction type. Should be 'I','U', or 'D' for Insert, Update or Delete.")));
   }
 
+  ereport(DEBUG1,(errmsg_internal("query:%s",query)));
   plan=SPI_prepare(query,bindParms,plan_types);
   queryResult=SPI_execp(plan,plan_values,NULL,0);
   if (queryResult<0) {
