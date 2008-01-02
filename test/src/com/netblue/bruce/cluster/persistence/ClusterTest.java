@@ -22,28 +22,42 @@
 */
 package com.netblue.bruce.cluster.persistence;
 
+import com.netblue.bruce.TestDatabaseHelper;
 import com.netblue.bruce.cluster.Cluster;
 import com.netblue.bruce.cluster.ClusterChangeListener;
 import com.netblue.bruce.cluster.ClusterFactory;
 import com.netblue.bruce.cluster.Node;
+import org.hibernate.SessionFactory;
+import org.hibernate.cfg.AnnotationConfiguration;
+import org.junit.*;
 import static org.junit.Assert.*;
-import org.junit.Before;
-import org.junit.Test;
 
+import java.sql.SQLException;
 import java.util.Set;
 
 /**
  * @author lanceball
+ * @version $Id$
  */
-public class ClusterTest extends HibernatePersistenceTest
-{
+public class ClusterTest {
     private ClusterFactory defaultFactory = null;
+    private SessionFactory sessionFactory = null;
 
-    @Before
-    public void setUp()
-    {
-        super.setUp();
+    @Before public void setupBefore() throws SQLException {
+	TestDatabaseHelper.createTestDatabase();
+	// Using the admin tool, initialize the config database
+	String[] args = new String[]{"-loadschema",
+				     "-url", TestDatabaseHelper.buildUrl(TestDatabaseHelper.getTestDatabaseName())};
+	com.netblue.bruce.admin.Main.main(args);
+	sessionFactory = new AnnotationConfiguration().configure().buildSessionFactory();
         defaultFactory = PersistentClusterFactoryTest.getClusterFactory();
+	//	fail("cause I said");
+    }
+    
+    @After public void teardownAfter() {
+	if (sessionFactory != null) {
+	    sessionFactory.close();
+	}
     }
 
     @Test

@@ -22,23 +22,21 @@
 */
 package com.netblue.bruce.cluster.persistence;
 
-import com.netblue.bruce.ReplicationTest;
+import com.netblue.bruce.TestDatabaseHelper;
 import org.hibernate.SessionFactory;
 import org.hibernate.cfg.AnnotationConfiguration;
-import org.junit.After;
-import org.junit.Assert;
-import static org.junit.Assert.assertNotNull;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.*;
+import static org.junit.Assert.*;
+
+import java.sql.SQLException;
 
 /**
  * Base class for using Hibernate persistence.  Provides setup of the session classes
  * @author lanceball
  */
-public class HibernatePersistenceTest extends ReplicationTest
+public class HibernatePersistence // extends ReplicationTest
 {
     private SessionFactory sessionFactory;
-
 
     /**
      * Get a SessionFactory initialized with the default configuration
@@ -49,32 +47,21 @@ public class HibernatePersistenceTest extends ReplicationTest
         return sessionFactory;
     }
 
-    @Before
-    public void setUp()
-    {
-        super.setUp();
-        try
-        {
-            sessionFactory = new AnnotationConfiguration().configure().buildSessionFactory();
-        }
-        catch (Throwable ex)
-        {
-            Assert.fail("Initial SessionFactory creation failed." + ex);
-        }
+    @BeforeClass public static void setupBeforeClass() throws SQLException {
+	TestDatabaseHelper.createTestDatabase();
+	// Using the admin tool, initialize the config database
+	String[] args = new String[]{"-loadschema",
+				     "-url", TestDatabaseHelper.buildUrl(TestDatabaseHelper.getTestDatabaseName())};
+	com.netblue.bruce.admin.Main.main(args);
     }
 
-    @After
-    public void tearDown()
-    {
-        if (sessionFactory != null)
-        {
+    @Before public void setupBefore() {
+	sessionFactory = new AnnotationConfiguration().configure().buildSessionFactory();
+    }
+
+    @After public void teardownAfter() {
+        if (sessionFactory != null) {
             sessionFactory.close();
         }
-    }
-
-    @Test
-    public void testGetSessionFactory()
-    {
-        assertNotNull(getSessionFactory());
     }
 }

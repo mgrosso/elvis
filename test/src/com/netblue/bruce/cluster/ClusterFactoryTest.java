@@ -22,11 +22,8 @@
 */
 package com.netblue.bruce.cluster;
 
-import com.netblue.bruce.ReplicationTest;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.fail;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.*;
+import static org.junit.Assert.*;
 
 import java.util.Set;
 
@@ -34,43 +31,23 @@ import java.util.Set;
  * Tests the <code>ClusterFactory</code>
  * @author lanceball
  */
-public class ClusterFactoryTest extends ReplicationTest
+public class ClusterFactoryTest
 {
     private ClusterFactory clusterFactory;
 
-    @Before public void setUp()
-    {
-        super.setUp();
-        try
-        {
-            // Always ensure our cluster factory is configured with the default before each test
-            ClusterFactory.setClusterFactoryClass(ClusterFactory.DEFAULT_CLUSTER_FACTORY_CLASS);
-            clusterFactory = ClusterFactory.getClusterFactory();
-            assertEquals("Unexpected class for ClusterFactory", ClusterFactory.DEFAULT_CLUSTER_FACTORY_CLASS, clusterFactory.getClass());
-        }
-        catch (Exception e)
-        {
-            e.printStackTrace();
-            fail(e.getLocalizedMessage());
-        }
+    @Test public void testGetDefaultClusterFactory() throws IllegalAccessException, InstantiationException {
+	ClusterFactory.setClusterFactoryClass(ClusterFactory.DEFAULT_CLUSTER_FACTORY_CLASS);
+	clusterFactory = ClusterFactory.getClusterFactory();
+	assertEquals("Unexpected class for ClusterFactory", ClusterFactory.DEFAULT_CLUSTER_FACTORY_CLASS, clusterFactory.getClass());
     }
 
     /**
      * Tests setting a custom <code>ClusterFactory</code> implemenetation
      */
-    @Test public void testGetCustomClusterFactory()
-    {
-        try
-        {
-            ClusterFactory.setClusterFactoryClass(MockClusterFactory.class);
-            ClusterFactory customFactory = ClusterFactory.getClusterFactory();
-            assertEquals("Unexpected ClusterFactory class found", MockClusterFactory.class, customFactory.getClass());
-        }
-        catch (Exception e)
-        {
-            e.printStackTrace();
-            fail("Cannot instantiate custom cluster");
-        }
+    @Test public void testGetCustomClusterFactory() throws IllegalAccessException, InstantiationException {
+	ClusterFactory.setClusterFactoryClass(MockClusterFactory.class);
+	ClusterFactory customFactory = ClusterFactory.getClusterFactory();
+	assertEquals("Unexpected ClusterFactory class found", MockClusterFactory.class, customFactory.getClass());
     }
 
     /**

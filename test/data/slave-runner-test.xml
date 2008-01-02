@@ -1,0 +1,45 @@
+<!DOCTYPE dataset SYSTEM "dataset.dtd">
+<!-- $Id: slave-status.xml 71992 2007-06-18 23:17:32Z lball $ -->
+<!-- Data for testing against the slavesnapshotstatus table -->
+<dataset>
+    <table name="bruce.yf_node">
+        <column>id</column>
+        <column>available</column>
+        <column>name</column>
+        <column>uri</column>
+        <row>
+            <value>1</value>
+            <value>true</value>
+            <value>Cluster 0 - Primary master</value>
+            <value>jdbc:postgresql://localhost:5432/bruce_master?user=bruce&amp;password=bruce</value>
+        </row>
+        <row>
+            <value>2</value>
+            <value>true</value>
+            <value>Cluster 0 - Slave Uno</value>
+            <value>jdbc:postgresql://localhost:5432/bruce_slave_1?user=bruce&amp;password=bruce</value>
+        </row>
+    </table>
+    <table name="bruce.yf_cluster">
+        <column>id</column>
+        <column>name</column>
+        <column>master_node_id</column>
+        <row>
+            <value>1000</value>
+            <value>Cluster Un</value>
+            <value>1</value>
+        </row>
+    </table>
+    <table name="bruce.node_cluster">
+        <column>node_id</column>
+        <column>cluster_id</column>
+        <row>
+            <value>1</value>
+            <value>1000</value>
+        </row>
+        <row>
+            <value>2</value>
+            <value>1000</value>
+        </row>
+    </table>
+</dataset>

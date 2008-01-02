@@ -22,10 +22,7 @@
 */
 package com.netblue.bruce.admin;
 
-import com.netblue.bruce.Log4jCapture;
-import com.netblue.bruce.TestDatabaseHelper;
-import org.apache.log4j.BasicConfigurator;
-import org.apache.log4j.Level;
+import com.netblue.bruce.*;
 import org.apache.log4j.Logger;
 import org.junit.After;
 import org.junit.AfterClass;
@@ -51,17 +48,13 @@ import java.util.Map.Entry;
  * subject of a filed bug, http://jira.codehaus.org/browse/BRUCE-10
  *
  * @author rklahn
- * @version $Id:$
+ * @version $Id$
  */
 
-public class IncludetableRegex {
+public class IncludetableRegexTest {
     @BeforeClass public static void setupTestClass() throws ClassNotFoundException, SQLException {
-	// Log4j config
-	BasicConfigurator.resetConfiguration();
-	BasicConfigurator.configure();
-	logger = Logger.getLogger(IncludetableRegex.class);
 	// Properties config
-	properties = System.getProperties();
+	properties = new BruceProperties();
 	// DB connection config
 	Class.forName("org.postgresql.Driver");
 	connection = 
@@ -123,8 +116,6 @@ public class IncludetableRegex {
 
     @Test public void testS() {
 	for (String entry : new String[]{"0","1","1256","255","256","27"}) {
-	    BasicConfigurator.resetConfiguration();
-	    Logger.getRootLogger().setLevel(Level.OFF);
 	    com.netblue.bruce.admin.Main.main(new String[]{"-data",
 							   TestDatabaseHelper.getTestDataDir()+
 							   "/includetable-regexp-"+entry+".xml",
@@ -136,12 +127,12 @@ public class IncludetableRegex {
 	}
     }
     
-    static Logger logger;
-    static Connection connection;
-    static Properties properties;
-    static Properties log4jP;
-    static PrintStream originalSysOut;
-    static PrintStream originalSysErr;
-    static ByteArrayOutputStream outBytes;
-    static ByteArrayOutputStream errBytes;
+    private static final Logger logger = Logger.getLogger(IncludetableRegexTest.class);
+    private static Connection connection;
+    private static BruceProperties properties;
+    private static Properties log4jP;
+    private static PrintStream originalSysOut;
+    private static PrintStream originalSysErr;
+    private static ByteArrayOutputStream outBytes;
+    private static ByteArrayOutputStream errBytes;
 }

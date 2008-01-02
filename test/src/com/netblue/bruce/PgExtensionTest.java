@@ -42,8 +42,6 @@ import java.util.SortedSet;
  */
 public class PgExtensionTest extends ReplicationTest
 {
-
-
     private final static Logger logger = Logger.getLogger(PgExtensionTest.class.getName());
     private final static int clusterID = 1;
 
@@ -67,7 +65,7 @@ public class PgExtensionTest extends ReplicationTest
         {
             super.setUpDatabase(connection);
 	    // We need at least one snapshot/transaction log table for these tests to work. 
-	    LogSwitchThread lt = new LogSwitchThread(new BruceProperties(),TestDatabaseHelper.getTestDataSource());
+	    LogSwitchThread lt = new LogSwitchThread(new BruceProperties(),TestDatabaseHelper.getTestDataSource(),new Long(1L));
 	    Statement s = TestDatabaseHelper.getTestDatabaseConnection().createStatement();
 	    lt.newLogTable(s);
             TestDatabaseHelper.applyDDLFromFile(connection, SCHEMA_UNIT_TESTS_DDL_SQL);

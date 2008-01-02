@@ -39,16 +39,6 @@ import java.util.Set;
  */
 public class ReplicationDaemonTest extends ReplicationTest
 {
-    static
-    {
-        BasicConfigurator.resetConfiguration();
-        BasicConfigurator.configure();
-        Logger.getRootLogger().removeAllAppenders();
-        Logger.getRootLogger().addAppender(new ConsoleAppender(new PatternLayout("%d{HH:mm:ss,SSS} [%t] %p %l %x%n%m%n")));
-        // Suppress messages by default. Main effect is to suppress hibernate output.
-        Logger.getRootLogger().setLevel(Level.OFF);
-    }
-
     /**
      * Initializes the database.  If you need to create tables, indices, etc at runtime, you can use this method to do
      * that.  If not, just make it a no-op.

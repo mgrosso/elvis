@@ -22,165 +22,95 @@
 */
 package com.netblue.bruce;
 
-import com.netblue.bruce.*;
-import com.netblue.bruce.cluster.Cluster;
-import com.netblue.bruce.cluster.ClusterFactory;
+import com.netblue.bruce.cluster.*;
 import org.apache.commons.dbcp.BasicDataSource;
 import org.apache.log4j.Logger;
-import org.dbunit.dataset.IDataSet;
-import org.dbunit.dataset.xml.XmlDataSet;
-import org.junit.AfterClass;
-import org.junit.Assert;
+import org.junit.*;
 import static org.junit.Assert.*;
-import org.junit.Before;
-import org.junit.Test;
 
-import java.io.FileInputStream;
 import java.sql.*;
-import java.util.SortedSet;
-import java.util.TreeSet;
 
 /**
- * Tests the SlaveRunner class
- * @author lanceball
+ * Tests the SlaveRunner class. We are testing the general logic of the class, but not testing the 
+ * run() method, which does not lend itself to being tested in a single thread.
+ * @author rklahn
+ * Strongly based on original SlaveRunnerTest by lanceball
  * @version $Id$
  */
-public class SlaveRunnerTest extends ReplicationTest
-{
+public class SlaveRunnerTest {
+    @BeforeClass public static void setupBeforeClass() 
+	throws SQLException, IllegalAccessException, InstantiationException {
+	TestDatabaseHelper.createNamedTestDatabase("bruce_master");
+	TestDatabaseHelper.createNamedTestDatabase("bruce_slave_1");
+	// Use the admin tool to create a cluster
+	String[] args = new String[]{"-data",
+				     TestDatabaseHelper.getTestDataDir() + "/slave-runner-test.xml",
+				     "-initnodeschema",
+				     "-initsnapshots", "MASTER",
+				     "-loadschema",
+				     "-operation", "CLEAN_INSERT",
+				     "-url", TestDatabaseHelper.buildUrl("bruce_master")};
+	com.netblue.bruce.admin.Main.main(args);
+	ClusterFactory clusterFactory = ClusterFactory.getClusterFactory();
+	cluster = clusterFactory.getCluster(CLUSTER_NAME);
+	node = cluster.getSlaves().iterator().next();
+	masterDataSource = new BasicDataSource();
+	masterDataSource.setUrl(cluster.getMaster().getUri());
+	masterDataSource.setDriverClassName(System.getProperty("bruce.jdbcDriverName","org.postgresql.Driver"));
+	masterDataSource.setValidationQuery(System.getProperty("bruce.poolQuery", "select now()"));
+    }
 
-    @Before
-    public void setUp()
-    {
-        super.setUp();
-        try
-        {
-            final ClusterFactory clusterFactory = ClusterFactory.getClusterFactory();
-            cluster = clusterFactory.getCluster(CLUSTER_NAME);
-            newCluster = clusterFactory.getCluster(NEW_CLUSTER_NAME);
-            if (masterDataSource == null)
-            {
-                masterDataSource = new BasicDataSource();
-                masterDataSource.setUrl(cluster.getMaster().getUri());
-                masterDataSource.setDriverClassName(System.getProperty("bruce.jdbcDriverName", "org.postgresql.Driver"));
-                masterDataSource.setValidationQuery(System.getProperty("bruce.poolQuery", "select now()"));
-            }
-	    // Make sure that at least one snapshot/transaction log exists before we do anything else
-	    LogSwitchThread lt = new LogSwitchThread(new BruceProperties(),masterDataSource);
-	    Connection c = masterDataSource.getConnection();
+    @AfterClass public static void teardownAfterClass() throws SQLException {
+	if (masterDataSource != null) {
+	    masterDataSource.close();
+	}
+    }
+
+    @Test public void testLastSnapshotAtStartup() {
+	SlaveRunner sr = new SlaveRunner(masterDataSource,cluster,node);
+	Snapshot lps = sr.getLastProcessedSnapshot();
+	assertNotNull("Last processed snapshot should not be null",lps);
+	Snapshot mns = sr.getNextSnapshot();
+	// As we have applied no snapshots to the master database, mns should be null
+	assertNull("Next snapshot should be null",mns);
+    }
+    
+    @Test public void testProcessSnapshot() throws SQLException {
+	SlaveRunner sr = new SlaveRunner(masterDataSource,cluster,node);
+	Snapshot lps = sr.getLastProcessedSnapshot();
+	assertNotNull("Last processed snapshot should not be null",lps);
+	Connection c = masterDataSource.getConnection();
+	try { // Make sure connection gets closed
 	    Statement s = c.createStatement();
-	    lt.newLogTable(s);
+	    try { // Make sure statement gets closed 
+		s.execute("select bruce.logsnapshot()");
+	    } finally {
+		s.close();
+	    }
+	} finally {
 	    c.close();
-	    s.close();
-        }
-        catch (Exception e)
-        {
-            fail(e.getLocalizedMessage());
-        }
+	}
+	Snapshot mns = sr.getNextSnapshot();
+	// As we have applied a snapshot to the master, mns should not be null
+	assertNotNull("Next snapshot should not be null",mns);
+	assertTrue("Next snapshot should be greater than last processed snapshot",mns.compareTo(lps)>0);
+	
+	// This is what we are really testing. 
+	sr.processSnapshot(mns);
+
+	// Check that the class returns the new snapshot
+	assertEquals("processSnapshot did not update itself",sr.getLastProcessedSnapshot(),mns);
+
+	// Check to see if the Slave's slavesnapshotstatus was actually updated in the database.
+	// We are presuming that SlaveRunner.queryForLastProcessedSnapshot() works as advertised.
+	// But if its not, we are likely to fail here, because we are unlikely to get back the 
+	// same snapshot from SlaveRunner.queryForLastProcessedSnapshot() as we have in mns.
+	assertEquals("processSnapshot did not update status table", sr.queryForLastProcessedSnapshot(),mns);
     }
-
-
-    @AfterClass
-    public static void releaseDatabaseResources()
-    {
-        try
-        {
-            if (masterDataSource != null)
-            {
-                masterDataSource.close();
-            }
-        }
-        catch (SQLException e)
-        {
-            Logger.getLogger(SlaveRunnerTest.class).error("Cannot close datasource", e);
-        }
-    }
-
-    @Test
-    public void testNoLastSnapshotExists()
-    {
-        SlaveRunner slaveRunner = new SlaveRunner(masterDataSource, newCluster, newCluster.getSlaves().iterator().next());
-        assertNull("Last processed snapshot should be null", slaveRunner.getLastProcessedSnapshot());
-        slaveRunner.shutdown();
-    }
-
-    @Test public void testLastSnapshotAtStartup()
-    {
-        final SlaveRunner slaveRunner = makeSlaveRunner();
-        final Snapshot snapshot = slaveRunner.getLastProcessedSnapshot();
-        assertNotNull("Last processed snapshot should not be null", snapshot);
-        assertEquals("Unexpected values for last snapshot", new TransactionID(99L), snapshot.getMinXid());
-        assertEquals("Unexpected values for last snapshot", new TransactionID(100L), snapshot.getMaxXid());
-        slaveRunner.shutdown();
-    }
-
-    /**
-     * Tests that the SlaveRunner updates status for an existing slave with a previous status already there
-     */
-    @Test
-    public void testProcessSnapshotUpdatesStatus()
-    {
-        final TransactionID minId = new TransactionID(101L);
-        final TransactionID maxId = new TransactionID(102L);
-        final SortedSet<TransactionID> inFlightIds = new TreeSet<TransactionID>();
-        final Snapshot snapshot = new Snapshot(minId, minId, maxId, inFlightIds);
-        final SlaveRunner slaveRunner = makeSlaveRunner();
-
-        // Here's what we are testing
-        slaveRunner.processSnapshot(snapshot);
-
-        // Check that the class returns the new snapshot
-        assertEquals("processSnapshot did not update itself", slaveRunner.getLastProcessedSnapshot(), snapshot);
-
-        // now check to see if the slave's status was updated in the database
-        // this test assumes that SlaveRunner#queryForLastProcessedSnapshot works as
-        // advertised.  It is possible that it doesn't.  If not, that should be caught
-        // in other tests
-        try
-        {
-            assertEquals("processSnapshot did not update status table", slaveRunner.queryForLastProcessedSnapshot(), snapshot);
-        }
-        catch (SQLException e)
-        {
-            fail(e.getLocalizedMessage());
-        }
-        slaveRunner.shutdown();
-    }
-
-
-    private SlaveRunner makeSlaveRunner()
-    {
-        SlaveRunner slaveRunner = new SlaveRunner(masterDataSource, cluster, cluster.getSlaves().iterator().next());
-        return slaveRunner;
-    }
-
-    /**
-     * Get the data set under test.  The {@link #setUp()} method will call use this data to perform a {@link
-     * org.dbunit.operation.DatabaseOperation.CLEAN_INSERT} on the database.
-     *
-     * @return
-     */
-    protected IDataSet getTestDataSet()
-    {
-        if (dataSet == null)
-        {
-            try
-            {
-                dataSet = new XmlDataSet(new FileInputStream(TestDatabaseHelper.getDataFile("slave-status.xml")));
-            }
-            catch (Exception e)
-            {
-                e.printStackTrace();
-                Assert.fail("Cannot load test dataset:  " + e.getLocalizedMessage());
-            }
-        }
-        return dataSet;
-    }
-
-
-    private IDataSet dataSet = null;
-    private static final String CLUSTER_NAME = "Cluster Un";
-    private static final String NEW_CLUSTER_NAME = "Cluster Deux";
-    private static Cluster cluster;
-    private static Cluster newCluster;
+    
+    private final static String CLUSTER_NAME = "Cluster Un";
+    private final static Logger logger = Logger.getLogger(SlaveRunnerTest.class);
     private static BasicDataSource masterDataSource;
+    private static Cluster cluster;
+    private static Node node;
 }

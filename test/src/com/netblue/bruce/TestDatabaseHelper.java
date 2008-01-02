@@ -51,7 +51,6 @@ import java.util.StringTokenizer;
 public class TestDatabaseHelper
 {
     private static final Logger LOGGER = Logger.getLogger(TestDatabaseHelper.class);
-    static { LOGGER.setLevel(Level.DEBUG); }
 
     public static final String DDL_DELIMITER             = ";";
     public static final String CONFIG_DB                 = "bruce";
@@ -271,6 +270,52 @@ public class TestDatabaseHelper
         schemaExport.create(false, true);
     }
 
+    /** 
+     * Create a named database, dropping it if nessasary. Create a bruce schema within it.
+     *
+     * @param dBName Name of database to create.
+     */
+    public static void createNamedTestDatabase(String dBName) throws SQLException {
+        Connection connection = getAdminDataSource().getConnection();
+	try { // Guarentee the connection gets closed
+	    final Statement statement = connection.createStatement();
+	    try { // Guarentee the statement gets closed.
+		connection.setAutoCommit(true);
+	    
+		// Drop the database. SQLException here is OK, probably means the database does not
+		// already exist
+		try {
+		    LOGGER.debug("Creating "+dBName+" database");
+		    executeAndLog(statement, "drop database " + dBName);
+		} catch (SQLException e) {}
+
+		// Create the database.
+		executeAndLog(statement,"create database "+dBName);
+	    } finally {
+		statement.close();
+	    }
+	} finally {
+	    connection.close();
+	}
+	// And the bruce schema.
+	BasicDataSource dataSource = createDataSource(buildUrl(dBName));
+	try { // Make sure the dataSource gets closed.
+	    connection = dataSource.getConnection();
+	    try { // Make sure the connection gets closed.
+		Statement statement = connection.createStatement();
+		try { // Make sure the statement gets closed.
+		    executeAndLog(statement,"create schema bruce");
+		} finally {
+		    statement.close();
+		}
+	    } finally {
+		connection.close();
+	    }
+	} finally {
+	    dataSource.close();
+	}
+    }
+
     /**
      * Creates the bruce database if it doesn't already exist.  Otherwise it drops and recreates the bruce schema
      *
@@ -278,47 +323,8 @@ public class TestDatabaseHelper
      *
      * @throws java.sql.SQLException
      */
-    public static void createTestDatabase()
-            throws SQLException, IOException, InterruptedException
-    {
-
-        final Connection connection = getAdminDataSource().getConnection();
-        final Statement statement = connection.createStatement();
-        final String testDBName = getTestDatabaseName();
-        connection.setAutoCommit(true);
-
-        // Force a shutdown of any backends connected to the test database
-/*
-        ResultSet rs = executeQueryAndLog(statement,
-                                          "select procpid from pg_stat_activity where datname = '" + testDBName + "'");
-        while (rs.next())
-        {
-            Process p = Runtime.getRuntime().exec("kill " + rs.getString("procpid"));
-            p.waitFor();
-            // Give the kill a chance to work
-            Thread.sleep(3000L);
-            LOGGER.debug("Terminated:" + rs.getString("procpid"));
-        }
-*/
-
-        // First see if the database is already there.  If it is, just drop and recreate the schema
-        try
-        {
-            ResultSet rs = executeQueryAndLog(statement, "select * from pg_database where datname = '" + testDBName + "'");
-            if (!rs.next())
-            {
-                LOGGER.debug("Creating replication database");
-                executeAndLog(statement, "create database " + testDBName);
-            }
-            rs.close();
-        }
-        catch (SQLException e)
-        {
-            LOGGER.info(e);
-        }
-        statement.close();
-        connection.close();
-        LOGGER.debug("DONE Creating test database");
+    public static void createTestDatabase() throws SQLException {
+	createNamedTestDatabase(getTestDatabaseName());
     }
 
     public static String getTestDatabaseName()

@@ -50,15 +50,6 @@ public abstract class DBUnitAbstractInitializer
     {
         try
         {
-            // Setup logging
-            BasicConfigurator.resetConfiguration();
-            BasicConfigurator.configure();
-            Logger.getRootLogger().removeAllAppenders();
-            Logger.getRootLogger().addAppender(new ConsoleAppender(new PatternLayout("%d{HH:mm:ss,SSS} [%t] %p %l %x%n%m%n")));
-
-            // Suppress messages by default. Main effect is to suppress hibernate output.
-            Logger.getRootLogger().setLevel(Level.OFF);
-
             // Make sure the database exists
             TestDatabaseHelper.createTestDatabase();
 
