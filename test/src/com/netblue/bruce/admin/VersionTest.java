@@ -24,6 +24,7 @@ package com.netblue.bruce.admin;
 
 import com.netblue.bruce.ReplicationTest;
 import com.netblue.bruce.TestDatabaseHelper;
+import org.apache.log4j.Logger;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -43,17 +44,17 @@ public class VersionTest extends ReplicationTest
         final int patch = Version.getPatchVersionNumber();
         final String name = Version.getVersionName();
 
-        Assert.assertEquals("Unexpected major version number", 0, major);
-        Assert.assertEquals("Unexpected minor version number", 5, minor);
+        Assert.assertEquals("Unexpected major version number", 1, major);
+        Assert.assertEquals("Unexpected minor version number", 0, minor);
         Assert.assertEquals("Unexpected patch version number", 0, patch);
-        Assert.assertEquals("Unexpected patch version number", "Replication Pre-release Alpha", name);
+        Assert.assertEquals("Unexpected patch version number", "Replication 1.0 release", name);
     }
 
     @Test
     public void testIsSameVersion()
     {
         Assert.assertTrue("Schema and code version conflict", Version.isSameVersion(TestDatabaseHelper.getTestDataSource()));
-        Assert.assertTrue("Schema and code version conflict", Version.isSameVersion(0, 5, 0, "Replication Pre-release Alpha"));
+        Assert.assertTrue("Schema and code version conflict", Version.isSameVersion(1, 0, 0, "Replication 1.0 release"));
     }
 
     @Test

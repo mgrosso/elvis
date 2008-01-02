@@ -357,6 +357,15 @@
             </batchtest>
         </junit>
 
+        <delete dir="${dir.junit.output}/html"/>
+        <mkdir dir="${dir.junit.output}/html"/>
+        <junitreport todir="${dir.junit.output}/xml">
+            <fileset dir="${dir.junit.output}/xml">
+                <include name="TEST-*.xml"/>
+            </fileset>
+            <report todir="${dir.junit.output}/html"/>
+        </junitreport>
+
         <!-- Generate the coverage report -->
         <emma enabled="${emma.enabled}">
             <report sourcepath="${dir.src}">
@@ -369,46 +378,6 @@
             </report>
         </emma>
     </target>
-
-    <target name="test-reports" depends="test" 
-            description="Creates HTML reports of the JUnit tests">
-        <mkdir dir="${dir.junit.output}/html"/>
-        <junitreport todir="${dir.junit.output}/xml">
-            <fileset dir="${dir.junit.output}/xml">
-                <include name="TEST-*.xml"/>
-            </fileset>
-            <report todir="${dir.junit.output}/html"/>
-        </junitreport>
-    </target>
-
-    <target name="test-one-class"
-            depends="jar, compile-test"
-            description="test one junit class, mainly for debugging, because some of the tests are getting long running">
-	<fail message="property test.this.class must be set (ant -Dtest.this.class=[class name] test-one-class" unless="test.this.class"/>
-        <antcall target="schemaexport"/>
-        <mkdir dir="${dir.junit.output}/xml"/>
-        <property name="dir.schema" location="schema"/>
-        <junit printsummary="yes" haltonfailure="no" fork="yes" showoutput="yes">
-	    <jvmarg value="-Xmx512m"/>
-	    <jvmarg value="-Dlog4j.configuration=${basedir}/bin/log4j.properties"/>
-            <jvmarg value="-Dpostgresql.adminURL=${postgresql.adminURL}"/>
-            <jvmarg value="-Dpostgresql.db_name=${postgresql.db_name}"/>
-            <jvmarg value="-Dpostgresql.URL=${postgresql.URL}"/>
-            <jvmarg value="-Dhibernate.connection.url=${postgresql.URL}"/>
-            <jvmarg value="-Dhibernate.connection.username=${user.name}"/>
-            <jvmarg value="-Dhibernate.dialect=org.hibernate.dialect.PostgreSQLDialect"/>
-            <jvmarg value="-Ddir.test.data=${dir.test.data}"/>
-            <jvmarg value="-Ddir.schema=${dir.schema}"/>
-            <classpath refid="classpath"/>
-            <formatter type="plain"/>
-
-            <batchtest fork="yes">
-                <fileset dir="test/src">
-                    <include name="**/${test.this.class}.java"/>
-                </fileset>
-            </batchtest>
-        </junit>
-    </target>	  
 
     <target name="cli-docs" description="Generates documentation for the admin CLI">
         <property name="cli.doc.dir" location="${dir.docs}/../"/>

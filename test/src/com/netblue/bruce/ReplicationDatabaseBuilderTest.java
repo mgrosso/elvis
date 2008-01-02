@@ -62,9 +62,9 @@ public class ReplicationDatabaseBuilderTest extends DBUnitAbstractInitializer
             int minor = resultSet.getInt(2);
             int patch = resultSet.getInt(3);
             String name = resultSet.getString(4).trim();
-            Assert.assertEquals("Unexpected schema name", "Replication Pre-release Alpha", name);
-            Assert.assertEquals("Unexpected major version", 0, major);
-            Assert.assertEquals("Unexpected minor version", 5, minor);
+            Assert.assertEquals("Unexpected schema name", "Replication 1.0 release", name);
+            Assert.assertEquals("Unexpected major version", 1, major);
+            Assert.assertEquals("Unexpected minor version", 0, minor);
             Assert.assertEquals("Unexpected patch version", 0, patch);
 
         }

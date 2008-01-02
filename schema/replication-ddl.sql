@@ -1,6 +1,8 @@
 DROP SCHEMA bruce;
 CREATE SCHEMA bruce;
 
+GRANT usage ON SCHEMA bruce TO public;
+
 DROP TABLE bruce.replication_version;
 CREATE TABLE bruce.replication_version
 (
@@ -10,7 +12,7 @@ CREATE TABLE bruce.replication_version
     name character(64)
 );
 
-INSERT INTO bruce.replication_version VALUES (0, 5, 0, 'Replication Pre-release Alpha');
+INSERT INTO bruce.replication_version VALUES (1, 0, 0, 'Replication 1.0 release');
 
 DROP TABLE bruce.currentlog;
 DROP VIEW bruce.snapshotlog;
@@ -57,11 +59,15 @@ CREATE FUNCTION bruce.normalmode() RETURNS integer
 CREATE SEQUENCE bruce.currentlog_id_seq INCREMENT BY 1 NO MAXVALUE NO MINVALUE CACHE 1;
 CREATE SEQUENCE bruce.transactionlog_rowseq INCREMENT BY 1 NO MAXVALUE NO MINVALUE CACHE 1;
 
+GRANT ALL ON bruce.transactionlog_rowseq TO public;
+
 CREATE TABLE bruce.currentlog
 (
     id integer DEFAULT nextval('bruce.currentlog_id_seq'::regclass) NOT NULL primary key,
     create_time timestamp without time zone DEFAULT now() NOT NULL
 );
+
+GRANT select ON bruce.currentlog TO public;
 
 SELECT pg_catalog.setval('bruce.currentlog_id_seq', 1, true);
 
@@ -106,4 +112,5 @@ CREATE TABLE bruce.slavesnapshotstatus (
     master_outstanding_xactions text,
     update_time timestamp without time zone default now() NOT NULL
 );
+
 

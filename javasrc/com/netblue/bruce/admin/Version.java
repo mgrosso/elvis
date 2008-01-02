@@ -111,10 +111,10 @@ public class Version
     // We don't need no stinkin instances
     private Version(){}
 
-    private static final int MAJOR_VERSION = 0;
-    private static final int MINOR_VERSION = 5;
+    private static final int MAJOR_VERSION = 1;
+    private static final int MINOR_VERSION = 0;
     private static final int PATCH_VERSION = 0;
-    private static final String NAME = "Replication Pre-release Alpha";
+    private static final String NAME = "Replication 1.0 release";
     static final String VERSION_QUERY = "select * from bruce.replication_version";
     private static final Logger LOGGER = Logger.getLogger(Version.class);
     private static final String MAJOR_COLUMN = "MAJOR";
