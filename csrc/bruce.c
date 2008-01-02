@@ -48,6 +48,9 @@
 #include <string.h>
 #include <signal.h>
 
+char *version = "Bruce Replication 1.0";
+char *id = "$Id$";
+
 /* For a PG extention to work version >= 8.2, it must include fmgr.h and include this source */
 #ifdef PG_MODULE_MAGIC
 PG_MODULE_MAGIC;
