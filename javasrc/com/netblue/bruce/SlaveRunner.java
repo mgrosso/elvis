@@ -37,6 +37,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import static java.text.MessageFormat.format;
 import java.util.ArrayList;
+import java.util.HashSet;
 
 /**
  * Responsible for obtaining {@link com.netblue.bruce.Snapshot}s from the <code>SnapshotCache</code>
@@ -62,6 +63,7 @@ public class SlaveRunner implements Runnable
         applyTransactionsQuery = properties.getProperty(APPLY_TRANSACTION_KEY, APPLY_TRANSACTION_DEFAULT);
         daemonModeQuery = properties.getProperty(DAEMONMODE_QUERY_ID_KEY, DAEMONMODE_QUERY_ID_DEFAULT);
         normalModeQuery = properties.getProperty(NORMALMODE_QUERY_ID_KEY, NORMALMODE_QUERY_ID_DEFAULT);
+	slaveTableIDQuery = properties.getProperty(SLAVE_TABLE_ID_KEY,SLAVE_TABLE_ID_DEFAULT);
         sleepTime = properties.getIntProperty(NEXT_SNAPSHOT_UNAVAILABLE_SLEEP_KEY, NEXT_SNAPSHOT_UNAVAILABLE_SLEEP_DEFAULT);
 
         // Setup our data source
@@ -187,6 +189,7 @@ public class SlaveRunner implements Runnable
         applyTransactionsStatement.close();
         daemonModeStatement.close();
         normalModeStatement.close();
+	slaveTableIDStatement.close();
     }
 
     /**
@@ -204,6 +207,7 @@ public class SlaveRunner implements Runnable
         applyTransactionsStatement = connection.prepareStatement(applyTransactionsQuery);
         daemonModeStatement = connection.prepareStatement(daemonModeQuery);
         normalModeStatement = connection.prepareStatement(normalModeQuery);
+	slaveTableIDStatement = connection.prepareStatement(slaveTableIDQuery);
         connection.commit();
     }
 
@@ -322,15 +326,20 @@ public class SlaveRunner implements Runnable
             LOGGER.trace("Applying transactions: " + transactionList);
             LOGGER.trace("Entering daemon mode for slave");
             daemonModeStatement.execute();
+	    HashSet<String> slaveTables = getSlaveTables();
             LOGGER.trace("Processing " + transactionList.size() + " changes");
             for (Change change : transactionList)
             {
-                LOGGER.trace("Applying change: " + change.toString());
-                applyTransactionsStatement.setString(1, change.getCmdType());
-                applyTransactionsStatement.setString(2, change.getTableName());
-                applyTransactionsStatement.setString(3, change.getInfo());
-                applyTransactionsStatement.execute();
-                LOGGER.trace("Change applied for " + change.toString());
+		if (slaveTables.contains(change.getTableName())) {
+		    LOGGER.trace("Applying change: " + change.toString());
+		    applyTransactionsStatement.setString(1, change.getCmdType());
+		    applyTransactionsStatement.setString(2, change.getTableName());
+		    applyTransactionsStatement.setString(3, change.getInfo());
+		    applyTransactionsStatement.execute();
+		    LOGGER.trace("Change applied for " + change.toString());
+		} else {
+		    LOGGER.trace("NOT applying change, table not replicated on slave: " + change.toString());
+		}
             }
             normalModeStatement.execute();
         }
@@ -417,6 +426,16 @@ public class SlaveRunner implements Runnable
         shutdownRequested = true;
     }
 
+    private HashSet<String> getSlaveTables() throws SQLException {
+	HashSet<String> retVal = new HashSet<String>();
+	ResultSet rs = slaveTableIDStatement.executeQuery();
+	while (rs.next()) {
+	    retVal.add(rs.getString("tablename"));
+	}
+	rs.close();
+	return retVal;
+    }
+    
     // --------- Class fields ---------------- //
     private boolean shutdownRequested = false;
     private BruceProperties properties;
@@ -428,6 +447,7 @@ public class SlaveRunner implements Runnable
     private PreparedStatement applyTransactionsStatement;
     private PreparedStatement daemonModeStatement;
     private PreparedStatement normalModeStatement;
+    private PreparedStatement slaveTableIDStatement;
 
     // --------- Constants ------------------- //
     private final int sleepTime;
@@ -439,6 +459,7 @@ public class SlaveRunner implements Runnable
     private final String applyTransactionsQuery;
     private final String daemonModeQuery;
     private final String normalModeQuery;
+    private final String slaveTableIDQuery;
     private final SnapshotCache masterDatabaseSnapshots;
     private final BasicDataSource dataSource = new BasicDataSource();
 
@@ -476,8 +497,19 @@ public class SlaveRunner implements Runnable
             .append("select * from pg_locks where pid = pg_backend_pid()")
             .append(" and locktype = 'transactionid'").toString();
 
+    // Query to determine tables that have Slave trigger
+    private static final String SLAVE_TABLE_ID_KEY = "bruce.slave.hasSlaveTrigger";
+    private static final String SLAVE_TABLE_ID_DEFAULT = 
+	"select n.nspname||'.'||c.relname as tablename from pg_class c, pg_namespace n "+
+	" where c.relnamespace = n.oid "+
+	"   and c.oid in (select tgrelid from pg_trigger "+
+	"                  where tgfoid = (select oid from pg_proc "+
+	"                                   where proname = 'denyaccesstrigger' "+
+	"                                     and pronamespace = (select oid from pg_namespace "+
+	"                                                          where nspname = 'bruce')))";
+
     // How long to wait if a 'next' snapshot is unavailable, in miliseconds
     private static final String NEXT_SNAPSHOT_UNAVAILABLE_SLEEP_KEY = "bruce.nextSnapshotUnavailableSleep";
-    // This default value may need some tuning. 100ms seems too small.
-    private static int NEXT_SNAPSHOT_UNAVAILABLE_SLEEP_DEFAULT = 100;
+    // This default value may need some tuning. 100ms seemed too small, 1s might be right
+    private static int NEXT_SNAPSHOT_UNAVAILABLE_SLEEP_DEFAULT = 1000;
 }
