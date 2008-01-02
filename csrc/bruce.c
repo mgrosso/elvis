@@ -365,14 +365,14 @@ Datum logSnapshot(PG_FUNCTION_ARGS) {
 	    "insert into bruce.snapshotlog_%s (current_xaction,min_xaction,max_xaction,outstanding_xactions) values ($1,$2,$3,$4);",
 	    currentLogID());
     
-    plan_types[0]=INT4OID;
-    plan_values[0]=DirectFunctionCall1(int4in,DirectFunctionCall1(xidout,TransactionIdGetDatum(currentXid)));
+    plan_types[0]=INT8OID;
+    plan_values[0]=DirectFunctionCall1(int8in,DirectFunctionCall1(xidout,TransactionIdGetDatum(currentXid)));
 
-    plan_types[1]=INT4OID;
-    plan_values[1]=DirectFunctionCall1(int4in,DirectFunctionCall1(xidout,
+    plan_types[1]=INT8OID;
+    plan_values[1]=DirectFunctionCall1(int8in,DirectFunctionCall1(xidout,
 								  TransactionIdGetDatum(SerializableSnapshot->xmin)));
-    plan_types[2]=INT4OID;
-    plan_values[2]=DirectFunctionCall1(int4in,DirectFunctionCall1(xidout,
+    plan_types[2]=INT8OID;
+    plan_values[2]=DirectFunctionCall1(int8in,DirectFunctionCall1(xidout,
 								  TransactionIdGetDatum(SerializableSnapshot->xmax)));
     plan_types[3]=TEXTOID;
     plan_values[3]=ox;
