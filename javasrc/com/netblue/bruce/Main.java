@@ -51,7 +51,7 @@ public class Main
 	    if (args[0].equals("-v") || args[0].equals("-version")) {
 		// We dont have log4j yet
 		System.out.println("$Id$");
-		System.out.println("Bruce Replication 1.0");
+		System.out.println("$URL$");
 		System.exit(0);
 	    }
 
