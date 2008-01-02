@@ -617,8 +617,8 @@ void insertTransactionLog(char *cmd_type,char *schema,char *table,Datum row_data
 	  schema,
 	  table);
   
-  plan_types[0]=INT4OID;
-  plan_values[0]=DirectFunctionCall1(int4in,DirectFunctionCall1(xidout,GetTopTransactionId()));
+  plan_types[0]=INT8OID;
+  plan_values[0]=DirectFunctionCall1(int8in,DirectFunctionCall1(xidout,GetTopTransactionId()));
   plan_types[1]=TEXTOID;
   plan_values[1]=row_data;
   
