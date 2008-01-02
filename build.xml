@@ -78,7 +78,7 @@
     <!-- =============================================== -->
     <!-- Jar package                                     -->
     <!-- =============================================== -->
-    <target name="jar" description="makes jar" depends="compile, make-hibernate-config">
+    <target name="jar" description="makes jar" depends="compile, compile-test, make-hibernate-config">
         <mkdir dir="${dir.release}"/>
         <copy file="${dir.schema}/cluster-ddl.sql" todir="${dir.classes}"/>
         <copy file="${dir.schema}/replication-ddl.sql" todir="${dir.classes}"/>
@@ -91,17 +91,34 @@
                 <attribute name="Build-Date" value="${cvstimestamp}"/>
             </manifest>
         </jar>
-        <echo message="created ${dir.release}/${jarfilename}"/>
+        <jar destfile="${dir.release}/${testjarfilename}" basedir="${dir.test.classes}">
+            <manifest>
+                <attribute name="Vendor" value="Vendare NetBlue, Inc"/>
+                <attribute name="Vendor-Id" value="com.netblue"/>
+                <attribute name="Implementation-Version" value="${bruce.version}"/>
+                <attribute name="Build-ID" value="${label}"/>
+                <attribute name="Build-Date" value="${cvstimestamp}"/>
+            </manifest>
+        </jar>
+        <jar destfile="${dir.release}/${sourcejarfilename}" basedir="${dir.src}">
+            <manifest>
+                <attribute name="Vendor" value="Vendare NetBlue, Inc"/>
+                <attribute name="Vendor-Id" value="com.netblue"/>
+                <attribute name="Implementation-Version" value="${bruce.version}"/>
+                <attribute name="Build-ID" value="${label}"/>
+                <attribute name="Build-Date" value="${cvstimestamp}"/>
+            </manifest>
+        </jar>
     </target>
     
-    <target name="release" depends="clean, jar, test, docs">
+    <target name="release" depends="clean, jar,  docs">
         <property name="dir.package" location="${dir.release}/bruce-${bruce.version}"/>
         <mkdir dir="${dir.package}"/>
         <copy todir="${dir.package}">
             <fileset dir="." includes="LICENSE.TXT"/>
         </copy>
         <copy todir="${dir.package}">
-            <fileset dir="${dir.release}" includes="bruce.jar"/>
+            <fileset dir="${dir.release}" includes="*.jar"/>
         </copy>
 
         <copy todir="${dir.release}">
@@ -114,6 +131,7 @@
             <fileset dir="." includes="csrc/**/*"/>
             <fileset dir="." includes="bin/**/*"/>
             <fileset dir="." includes="sample/**/*"/>
+            <fileset dir="." includes="stresstest/**/*"/>
             <fileset dir=".">
                 <include name="schema/*.sql"/>
                 <exclude name="schema/unit-tests-ddl.sql"/>
@@ -142,7 +160,9 @@
         <chmod perm="ug+rx" file="${dir.package}/bin/admin.sh"/>
         <tar compression="gzip" destfile="${dir.release}/bruce-${bruce.version}.tgz" basedir="${dir.release}" includes="bruce-${bruce.version}/**/*"/>
         <delete dir="${dir.package}"/>
-        <delete file="${dir.release}/bruce.jar"/>
+        <delete file="${dir.release}/${jarfilename}"/>
+        <delete file="${dir.release}/${sourcejarfilename}"/>
+        <delete file="${dir.release}/${testjarfilename}"/>
     </target>
 
     <!-- =============================================== -->
@@ -172,7 +192,7 @@
                      excludes="**/*.java"
                     />
         </copy>
-        <javac srcdir="${dir.test}" destdir="${dir.classes}" debug="on">
+        <javac srcdir="${dir.test}" destdir="${dir.test.classes}" debug="on">
             <include name="**/*.java"/>
             <classpath refid="classpath"/>
             <compilerarg compiler="modern" value="-Xlint"></compilerarg>

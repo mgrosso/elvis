@@ -47,10 +47,10 @@ public class TestDaemon
         TestDatabaseHelper.executeAndLogSupressingExceptions(adminStatement, "drop database bruce_slave_1");
         TestDatabaseHelper.executeAndLogSupressingExceptions(adminStatement, "drop database bruce_slave_2");
 
-        TestDatabaseHelper.executeAndLog(adminStatement, "create database bruce_config");
-        TestDatabaseHelper.executeAndLog(adminStatement, "create database bruce_master");
-        TestDatabaseHelper.executeAndLog(adminStatement, "create database bruce_slave_1");
-        TestDatabaseHelper.executeAndLog(adminStatement, "create database bruce_slave_2");
+        TestDatabaseHelper.executeAndLogSupressingExceptions(adminStatement, "create database bruce_config");
+        TestDatabaseHelper.executeAndLogSupressingExceptions(adminStatement, "create database bruce_master");
+        TestDatabaseHelper.executeAndLogSupressingExceptions(adminStatement, "create database bruce_slave_1");
+        TestDatabaseHelper.executeAndLogSupressingExceptions(adminStatement, "create database bruce_slave_2");
 
         // Now initialize the master and each slave with the schema used in PgJDBCBench
         PgJDBCBench.main(new String[]{
@@ -66,7 +66,7 @@ public class TestDaemon
         // Now use the admin tool to initialize the configuration database and load the cluster metadata
         Main.main(new String[]{ // Main.main() - how goofy
                 "-url", TestDatabaseHelper.buildUrl("bruce_config"),
-                "-data", "sample/config.xml", // hmm - should this be someplace besides "sample"?
+                "-data", "../test/config.xml", 
                 "-initsnapshots", "MASTER",
                 "-operation", "CLEAN_INSERT",
                 "-loadschema", "-initnodeschema"
@@ -77,9 +77,14 @@ public class TestDaemon
         daemon.loadCluster("ClusterOne");
         daemon.run();
 
-        // Now run the benchmark tests
-        PgJDBCBench.main(new String[]{
-                "-uri", TestDatabaseHelper.buildUrl("bruce_master")
-        });
+        // Sleep for a few so we're sure everything is kosher
+        try { Thread.sleep(3); }
+        catch (InterruptedException e)
+        { e.printStackTrace();  }
+
+        // Now run PgJDBCBench
+        PgJDBCBench.main(args);
+
+        daemon.shutdown();
     }
 }

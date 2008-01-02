@@ -3,10 +3,11 @@
 PRGDIR=`dirname "$0"`
 cd $PRGDIR
 PRGPATH=`pwd`
-LIBPATH=$PRGPATH/../lib
+TOP=../../
+LIBPATH=$TOP/lib
 
 CLASSPATH=""
-for i in `find $LIBPATH -name "*.jar"` $PRGPATH/../bruce.jar ; do
+for i in `find $LIBPATH -name "*.jar"` $TOP/bruce.jar $TOP/bruce-tests.jar ; do
     if [ "$CLASSPATH" == "" ] ; then
 	CLASSPATH=$i
     else
@@ -14,4 +15,4 @@ for i in `find $LIBPATH -name "*.jar"` $PRGPATH/../bruce.jar ; do
     fi
 done
 
-java -classpath $CLASSPATH com.netblue.bruce.PgJDBCBench $@
+java -classpath $CLASSPATH com.netblue.bruce.PgJDBCBench $@ 
