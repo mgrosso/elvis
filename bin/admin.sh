@@ -28,7 +28,7 @@ PRGDIR=`dirname "$PRG"`
 cd $PRGDIR
 PRGPATH=`pwd`
 
-BRUCE_OPTS="-Dlog4j.configuration=${PRGPATH}/log4j.properties"
+BRUCE_OPTS="-Dlog4j.configuration=file://${PRGPATH}/log4j.properties"
 
  # Be sure we have a JAVA_HOME set - default to /usr/local/java
 [ -z "$JAVA_HOME" ] && JAVA_HOME=/usr/local/java
