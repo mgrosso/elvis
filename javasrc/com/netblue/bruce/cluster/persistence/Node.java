@@ -266,7 +266,7 @@ class Node implements com.netblue.bruce.cluster.Node
     @ForeignKey(name="node_id_fk")
     private Set<com.netblue.bruce.cluster.Cluster> cluster = new HashSet<com.netblue.bruce.cluster.Cluster>();
 
-    @Column
+    @Lob
     private String includeTable;
 
     private static final String DEFAULT_TABLE_MATCH = ".*";
