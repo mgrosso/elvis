@@ -223,27 +223,6 @@ public class Snapshot implements Comparable, Serializable
     }
 
     /**
-     * Generate a SortedSet of TransactionIDs that completed between two Snapshots, this Snapshot
-     * and a provided Snapshot
-     *
-     * @param otherSnapshot Snapshot representing a different point in time from this Snapshot
-     * @return A SortedSet of TransactionIDs that completed between the two points in time represented by the
-     * Snapshots
-     */
-    public SortedSet<TransactionID> tIDsBetweenSnapshots(Snapshot otherSnapshot)
-    {
-        Snapshot s1 = this;
-        Snapshot s2 = otherSnapshot;
-        if (s1.maxXid.compareTo(s2.maxXid) > 0)
-        {
-            s2 = this;
-            s1 = otherSnapshot;
-        }
-
-	return new TidsBetweenSnapshotsSet(s1,s2);
-    }
-
-    /**
      * Returns a string representation of this Snapshot.
      *
      * @return a string representation of the Snapshot

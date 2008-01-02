@@ -51,7 +51,6 @@ public class SlaveRunnerTest extends ReplicationTest
     public void setUp()
     {
         super.setUp();
-        snapshotCache = new SnapshotCache(masterDataSource);
         try
         {
             final ClusterFactory clusterFactory = ClusterFactory.getClusterFactory();
@@ -91,7 +90,7 @@ public class SlaveRunnerTest extends ReplicationTest
     @Test
     public void testNoLastSnapshotExists()
     {
-        SlaveRunner slaveRunner = new SlaveRunner(snapshotCache, newCluster, newCluster.getSlaves().iterator().next());
+        SlaveRunner slaveRunner = new SlaveRunner(masterDataSource, newCluster, newCluster.getSlaves().iterator().next());
         assertNull("Last processed snapshot should be null", slaveRunner.getLastProcessedSnapshot());
         slaveRunner.shutdown();
     }
@@ -142,7 +141,7 @@ public class SlaveRunnerTest extends ReplicationTest
 
     private SlaveRunner makeSlaveRunner()
     {
-        SlaveRunner slaveRunner = new SlaveRunner(snapshotCache, cluster, cluster.getSlaves().iterator().next());
+        SlaveRunner slaveRunner = new SlaveRunner(masterDataSource, cluster, cluster.getSlaves().iterator().next());
         return slaveRunner;
     }
 
@@ -175,6 +174,5 @@ public class SlaveRunnerTest extends ReplicationTest
     private static final String NEW_CLUSTER_NAME = "Cluster Deux";
     private static Cluster cluster;
     private static Cluster newCluster;
-    private SnapshotCache snapshotCache;
     private static BasicDataSource masterDataSource;
 }

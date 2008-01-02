@@ -60,8 +60,6 @@ public class SlaveFactory implements ThreadFactory
         masterDataSource.setUrl(cluster.getMaster().getUri());
         masterDataSource.setDriverClassName(System.getProperty("bruce.jdbcDriverName", "org.postgresql.Driver"));
         masterDataSource.setValidationQuery(System.getProperty("bruce.poolQuery", "select now()"));
-
-        snapshotCache = new SnapshotCache(masterDataSource);
     }
 
     /**
@@ -84,7 +82,7 @@ public class SlaveFactory implements ThreadFactory
         final Set<Node> nodes = cluster.getSlaves();
         for (Node node : nodes)
         {
-            final SlaveRunner slaveRunner = new SlaveRunner(snapshotCache, cluster, node);
+            final SlaveRunner slaveRunner = new SlaveRunner(masterDataSource, cluster, node);
             Thread thread = newThread(slaveRunner);
             thread.setName(node.getName());
             LOGGER.info("[" + threadGroup.getName() + "]: spawning slave thread for node: " + node.getName());
@@ -134,7 +132,6 @@ public class SlaveFactory implements ThreadFactory
 
     private final Cluster cluster;
     private final ThreadGroup threadGroup;
-    private final SnapshotCache snapshotCache;
     private final HashMap<Thread, SlaveRunner> threadMap = new HashMap<Thread, SlaveRunner>();
     private static final Logger LOGGER = Logger.getLogger(SlaveFactory.class);
     private BasicDataSource masterDataSource;

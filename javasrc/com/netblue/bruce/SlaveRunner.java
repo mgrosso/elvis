@@ -38,6 +38,7 @@ import java.sql.SQLException;
 import static java.text.MessageFormat.format;
 import java.util.ArrayList;
 import java.util.HashSet;
+import javax.sql.DataSource;
 
 /**
  * Responsible for obtaining {@link com.netblue.bruce.Snapshot}s from the <code>SnapshotCache</code>
@@ -47,14 +48,12 @@ import java.util.HashSet;
  */
 public class SlaveRunner implements Runnable
 {
-    public SlaveRunner(final SnapshotCache snapshotCache, final Cluster cluster, final Node node)
+    public SlaveRunner(final DataSource masterDataSource, final Cluster cluster, final Node node)
     {
         this.node = node;
         this.cluster = cluster;
-        this.masterDatabaseSnapshots = snapshotCache;
+        this.masterDataSource = masterDataSource;
         properties = new BruceProperties();
-        properties.putAll(System.getProperties());
-        LOGGER.setLevel(Level.INFO);
 
         // Get our query strings
         selectLastSnapshotQuery = properties.getProperty(SNAPSHOT_STATUS_SELECT_KEY, SNAPSHOT_STATUS_SELECT_DEFAULT);
@@ -263,7 +262,7 @@ public class SlaveRunner implements Runnable
         {
             connection = getConnection();
             connection.setSavepoint();
-            applyAllChangesForTransaction(getOutstandingTransactions(snapshot));
+            applyAllChangesForTransaction(snapshot);
             updateSnapshotStatus(snapshot);
             connection.commit();
             this.lastProcessedSnapshot = snapshot;
@@ -311,72 +310,137 @@ public class SlaveRunner implements Runnable
     }
 
     /**
-     * Applies all of the {@link com.netblue.bruce.Change}s in <code>transactionList</code> to this slave
+     * Applies all outstanding {@link com.netblue.bruce.Change}s to this slave
      *
-     * @param transactionList A {@link com.netblue.bruce.Transaction} containing all <code>Change</code>s in the master
-     * Node that we should apply.
+     * @param snapshot A {@link com.netblue.bruce.Snapshot} containing the latest master snapshot.
      */
-    private void applyAllChangesForTransaction(final Transaction transactionList) throws SQLException
+    private void applyAllChangesForTransaction(final Snapshot snapshot) throws SQLException
     {
         // This method is part of a larger transaction.  We don't validate/get the connection here,
         // because if the connection becomes invalid as a part of that larger transaction, we're screwed
         // anyway and we don't want to create a new connection for just part of the transaction
-        if (transactionList != null)
-        {
-            LOGGER.trace("Applying transactions: " + transactionList);
-            LOGGER.trace("Entering daemon mode for slave");
-            daemonModeStatement.execute();
-	    HashSet<String> slaveTables = getSlaveTables();
-            LOGGER.trace("Processing " + transactionList.size() + " changes");
-            for (Change change : transactionList)
-            {
-		if (slaveTables.contains(change.getTableName())) {
-		    LOGGER.trace("Applying change: " + change.toString());
-		    applyTransactionsStatement.setString(1, change.getCmdType());
-		    applyTransactionsStatement.setString(2, change.getTableName());
-		    applyTransactionsStatement.setString(3, change.getInfo());
-		    applyTransactionsStatement.execute();
-		    LOGGER.trace("Change applied for " + change.toString());
-		} else {
-		    LOGGER.trace("NOT applying change, table not replicated on slave: " + change.toString());
+	if (snapshot == null) {
+            LOGGER.trace("Latest Master snapshot is null");
+	} else {
+            LOGGER.trace("Applying transactions: ");
+	    LOGGER.trace("Getting master database connection");
+	    Connection masterC = masterDataSource.getConnection();
+	    try { // prevent connection pool leakage
+		masterC.setAutoCommit(false);
+		PreparedStatement masterPS = 
+		    masterC.prepareStatement(properties.getProperty(GET_OUTSTANDING_TRANSACTIONS_KEY,
+								    GET_OUTSTANDING_TRANSACTIONS_DEFAULT));
+		masterPS.setFetchSize(50);
+		masterPS.setLong(1,lastProcessedSnapshot.getMinXid().getLong());
+		masterPS.setLong(2,snapshot.getMaxXid().getLong());
+		ResultSet masterRS = masterPS.executeQuery();
+		LOGGER.trace("Entering daemon mode for slave");
+		daemonModeStatement.execute();
+		HashSet<String> slaveTables = getSlaveTables();
+		LOGGER.trace("Processing changes");
+		while (masterRS.next()) {
+		    TransactionID tid = new TransactionID(masterRS.getLong("xaction"));
+		    // Skip transactions not between snapshots
+		    if (lastProcessedSnapshot.transactionIDGE(tid) &&
+			snapshot.transactionIDLT(tid)) {
+			if (slaveTables.contains(masterRS.getString("tabname"))) {
+			    LOGGER.trace("Applying change."+
+					 " xid:"+masterRS.getLong("rowid")+
+					 " tid:"+tid+
+					 " tabname:"+masterRS.getString("tabname")+
+					 " cmdtype:"+masterRS.getString("cmdtype")+
+					 " info:"+masterRS.getString("info"));
+			    applyTransactionsStatement.setString(1, masterRS.getString("cmdtype"));
+			    applyTransactionsStatement.setString(2, masterRS.getString("tabname"));
+			    applyTransactionsStatement.setString(3, masterRS.getString("info"));
+			    applyTransactionsStatement.execute();
+			    LOGGER.trace("Change applied");
+			} else {
+			    LOGGER.trace("NOT applying change. Table not replicated on slave."+
+					 " xid:"+masterRS.getLong("rowid")+
+					 " tid:"+tid+
+					 " tabname:"+masterRS.getString("tabname")+
+					 " cmdtype:"+masterRS.getString("cmdtype")+
+					 " info:"+masterRS.getString("info"));
+			}
+		    } else {
+			LOGGER.trace("Transaction not between snapshots. tid:"+tid+
+				     " lastslaveS:"+lastProcessedSnapshot+" masterS:"+snapshot);
+		    }
 		}
-            }
+	    } finally {
+		masterC.close();
+	    }
             normalModeStatement.execute();
         }
-        else
-        {
-            LOGGER.warn("No transactions to apply to slave node for Transaction: " + transactionList);
-        }
     }
 
     /**
-     * Gets a list of the transactions that have occurred between {@link #getLastProcessedSnapshot()} and
-     * <code>snapshot</code>
-     *
-     * @param snapshot the <code>Snapshot</code> to use as the upper transaction boundary.
-     *
-     * @return A {@link com.netblue.bruce.Transaction} containing all outstanding transactions.
-     */
-    private Transaction getOutstandingTransactions(final Snapshot snapshot)
-    {
-        return masterDatabaseSnapshots.getOutstandingTransactions(getLastProcessedSnapshot(), snapshot);
-    }
-
-    /**
-     * Gets the next snapshot that the master database cache has for us.  May block waiting for the database, or simply
-     * waiting for a new snapshot to become available
+     * Gets the next snapshot from the master database. Will return null if no next snapshot
+     * available.
      *
      * @return the next Snapshot when it becomes available
      */
     private Snapshot getNextSnapshot()
     {
-        LOGGER.trace("Getting next snapshot from cache");
+        LOGGER.trace("Getting next snapshot");
+	Snapshot retVal = null;
         final Snapshot processedSnapshot = getLastProcessedSnapshot();
-        if (processedSnapshot != null)
-        {
-            return masterDatabaseSnapshots.getNextSnapshot(processedSnapshot.getCurrentXid());
-        }
-        return null;
+	long nextNormalXID = processedSnapshot.getCurrentXid().nextNormal().getLong();
+	long lastNormalXID = processedSnapshot.getCurrentXid().lastNormal().getLong();
+	LOGGER.trace("processedSnapshot:"+processedSnapshot.getCurrentXid()+
+		     " nextNormalXID:"+nextNormalXID+" lastNormalXID:"+lastNormalXID);
+	// We have to determine possible values for the next XID. There is a detailed 
+	// discussion around the nature of PostgreSQL transaction IDs in 
+	// TransactionID.java, but the short version is this:
+	// TransactionIDs are 32-bit modulo-31 numbers, with 2^31st TransactionIDs 
+	// greater than, and 2^31 TransactionIDs less than any TransactionID. 
+	// Except: Some TransactionIDs are special, and for the purpose of this 
+	// discussion, can be considered always less than our TransactionID
+	try {
+	    Connection c = masterDataSource.getConnection();
+	    try { // Make sure the connection we just got gets closed
+		PreparedStatement ps;
+		if (nextNormalXID < lastNormalXID) {
+		    // Two cases here. One, where the nextNormalID is less than lastNormalXID, and,
+		    // thus, a simple less than or equals test can be used
+		    LOGGER.trace("simple case");
+		    ps = c.prepareStatement(properties.getProperty(NEXT_SNAPSHOT_SIMPLE_KEY,
+								   NEXT_SNAPSHOT_SIMPLE_DEFAULT));
+		    ps.setLong(1, TransactionID.INVALID);
+		    ps.setLong(2, TransactionID.BOOTSTRAP);
+		    ps.setLong(3, TransactionID.FROZEN);
+		    ps.setLong(4, nextNormalXID);
+		    ps.setLong(5, lastNormalXID);
+		} else {
+		    // Second case is where nextNormalID is greater than lastNormalXID. This occurs
+		    // when the lastNormalXID has wrapped around 2^32. The test here is a little more
+		    // complex, we are looking for snapshots either >=nextNormalXID or <=lastNormalXID
+		    LOGGER.trace("wraparound case");
+		    ps =c.prepareStatement(properties.getProperty(NEXT_SNAPSHOT_WRAPAROUND_KEY,
+								  NEXT_SNAPSHOT_WRAPAROUND_DEFAULT));
+		    ps.setLong(1, TransactionID.INVALID);
+		    ps.setLong(2, TransactionID.BOOTSTRAP);
+		    ps.setLong(3, TransactionID.FROZEN);
+		    ps.setLong(4, nextNormalXID);
+		    ps.setLong(5, TransactionID.MAXNORMAL);
+		    ps.setLong(6, TransactionID.FIRSTNORMAL);
+		    ps.setLong(7, lastNormalXID);
+		}
+		ResultSet rs = ps.executeQuery();
+		if (rs.next()) {
+		    retVal = new Snapshot(new TransactionID(rs.getLong("current_xaction")),
+					  new TransactionID(rs.getLong("min_xaction")),
+					  new TransactionID(rs.getLong("max_xaction")),
+					  rs.getString("outstanding_xactions"));
+		}
+	    } finally {
+		c.close();
+	    }
+	} catch (SQLException e) {
+	    LOGGER.info("Can not obtain next Snapshot due to SQLException",e);
+	}
+	return retVal;
     }
 
     /**
@@ -460,7 +524,7 @@ public class SlaveRunner implements Runnable
     private final String daemonModeQuery;
     private final String normalModeQuery;
     private final String slaveTableIDQuery;
-    private final SnapshotCache masterDatabaseSnapshots;
+    private final DataSource masterDataSource;
     private final BasicDataSource dataSource = new BasicDataSource();
 
     // --------- Static Constants ------------ //
@@ -507,6 +571,32 @@ public class SlaveRunner implements Runnable
 	"                                   where proname = 'denyaccesstrigger' "+
 	"                                     and pronamespace = (select oid from pg_namespace "+
 	"                                                          where nspname = 'bruce')))";
+
+    // Query to determine the next snapshot, when nextNormalXID < lastNormalXID
+    private static final String NEXT_SNAPSHOT_SIMPLE_KEY = "bruce.slave.nextSnapshotSimple";
+    private static final String NEXT_SNAPSHOT_SIMPLE_DEFAULT =
+	"select * from bruce.snapshotlog "+
+	" where current_xaction not in (?,?,?) "+
+	"   and current_xaction >= ? "+
+	"   and current_xaction <= ? "+
+	" order by current_xaction desc limit 1";
+
+    // Query to determine the next snapshot, when nextNormalXID > lastNormalXID
+    private static final String NEXT_SNAPSHOT_WRAPAROUND_KEY = 
+	"bruce.slave.nextSnapshotWraparound";
+    private static final String NEXT_SNAPSHOT_WRAPAROUND_DEFAULT =
+	"select * from bruce.snapshotlog "+
+	" where current_xaction not in (?,?,?) "+
+	"   and current_xaction >= ? "+
+	"   and current_xaction <= ? "+
+	"   and current_xaction >= ? "+
+	"   and current_xaction <= ? "+
+	" order by current_xaction desc limit 1";
+
+    private static final String GET_OUTSTANDING_TRANSACTIONS_KEY =
+	"bruce.slave.getOutstandingTransactions";
+    private static final String GET_OUTSTANDING_TRANSACTIONS_DEFAULT =
+	"select * from bruce.transactionlog where xaction >= ? and xaction < ? order by rowid asc";
 
     // How long to wait if a 'next' snapshot is unavailable, in miliseconds
     private static final String NEXT_SNAPSHOT_UNAVAILABLE_SLEEP_KEY = "bruce.nextSnapshotUnavailableSleep";

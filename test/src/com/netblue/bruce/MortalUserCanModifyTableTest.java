@@ -38,20 +38,20 @@ import java.sql.SQLException;
 
 /**
  * @author rklahn
- * @version $Id:$
+ * @version $Id$
  */
 public class MortalUserCanModifyTableTest extends ReplicationTest {
     @BeforeClass public static void setupTestClass() throws SQLException {
 	// Root Logger is off, light up our messages
 	logger = Logger.getLogger(MortalUserCanModifyTableTest.class);
-	logger.setLevel(Level.DEBUG);
+	logger.setLevel(Level.INFO);
 	// Get a DB connection as user:bruce
 	connectionB = TestDatabaseHelper.getTestDatabaseConnection();
 	// Create a mortal user
 	Statement s = connectionB.createStatement();
 	try {
 	    s.execute("drop schema mortal cascade");
-	} catch (SQLException e) { logger.debug(e); } // Error OK, probably schema already exists
+	} catch (SQLException e) { logger.debug(e); } // Error OK, probably schema did not already exist
 	try {
 	    s.execute("drop user mortal");
 	} catch (SQLException e) { logger.debug(e); } // Error OK, probably user did not already exist
@@ -81,6 +81,19 @@ public class MortalUserCanModifyTableTest extends ReplicationTest {
 		  "FOR EACH ROW EXECUTE PROCEDURE bruce.logtransactiontrigger()");
 	s.close();
 	sM.close();
+    }
+
+    // Clean up our droppings
+    @AfterClass public static void teardownTestClass() throws SQLException {
+	connectionB = TestDatabaseHelper.getTestDatabaseConnection();
+	// Create a mortal user
+	Statement s = connectionB.createStatement();
+	try {
+	    s.execute("drop schema mortal cascade");
+	} catch (SQLException e) { logger.debug(e); } // Error OK, probably schema did not already exist
+	try {
+	    s.execute("drop user mortal");
+	} catch (SQLException e) { logger.debug(e); } // Error OK, probably user did not already exist
     }
 
     @Before public void beforeTest() {

@@ -24,6 +24,7 @@ package com.netblue.bruce;
 
 import junit.framework.JUnit4TestAdapter;
 import org.apache.log4j.Logger;
+import org.apache.log4j.Level;
 import org.junit.*;
 
 import java.io.File;
@@ -326,39 +327,31 @@ public class PgExtensionTest extends ReplicationTest
                                         new TransactionID(rs.getLong("max_xaction")),
                                         rs.getString("outstanding_xactions"));
         logger.debug("masterS:"+masterS);
-        // Get the list of transactions completed between the snapshots
-        SortedSet<TransactionID> xactions = slaveS.tIDsBetweenSnapshots(masterS);
-        logger.debug("TransactionList:"+xactions);
-        // Gather changes that occured during those transactions
-        Transaction t = new Transaction();
-        for (TransactionID tid:xactions)
-        {
-            Transaction lt = new Transaction();
-            rs = TestDatabaseHelper.executeQueryAndLog(s,"select * from transactionlog where xaction = "+tid.toString());
-            while (rs.next())
-            {
-                Change ch = new Change(rs.getLong("rowid"),tid,rs.getString("cmdtype"),
-                                      "bruce.test2", // On a real slave, this will be rs.getString("tabname")
-                                      rs.getString("info"));
-                logger.trace("Change: "+ch);
-                lt.add(ch);
-            }
-            t.addAll(lt);
-        }
-        // Apply changes
+	PreparedStatement ps = 
+	    connection.prepareStatement("select * from bruce.transactionlog "+
+					" where xaction >= ? and xaction < ? order by rowid asc");
+	ps.setLong(1,slaveS.getMinXid().getLong());
+	ps.setLong(2,masterS.getMaxXid().getLong());
+	ResultSet xactionRS = ps.executeQuery();
         TestDatabaseHelper.executeAndLog(s,"select daemonmode()");
-        logger.debug("Changes to apply"+t);
-        for (Change ch:t)
-        {
-            logger.trace("Applying change: "+ch);
-            TestDatabaseHelper.executeAndLog(s,"select applyLogTransaction('"+ch.getCmdType()+"','"+ch.getTableName()+"','"+ch.getInfo()+"')");
-        }
+	while (xactionRS.next()) {
+	    TransactionID tid = new TransactionID(xactionRS.getLong("xaction"));
+	    if (slaveS.transactionIDGE(tid) && masterS.transactionIDLT(tid)) {
+		TestDatabaseHelper.executeAndLog(s,"select applyLogTransaction('"+
+						 xactionRS.getString("cmdtype")+"','"+
+						 // On a real slave, this will be 
+						 // rs.getString("tabname")
+						 "bruce.test2"+"','"+
+						 xactionRS.getString("info")+"')");
+	    }
+	}
         TestDatabaseHelper.executeAndLog(s,"select normalmode()");
         // Update slave replication status
         //
         // First, determine our transactionID
-        rs = TestDatabaseHelper.executeQueryAndLog(s,"select * from pg_locks where pid = pg_backend_pid()"+
-                " and locktype = 'transactionid'");
+        rs = TestDatabaseHelper.executeQueryAndLog(s,"select * from pg_locks "+
+						   "   where pid = pg_backend_pid()"+
+						   "     and locktype = 'transactionid'");
         rs.next();
         TransactionID stid = new TransactionID(rs.getString("transaction"));
         logger.debug("Slave transactionID: "+stid);
