@@ -296,6 +296,8 @@ public class SnapshotCache
 		// This try block is to make sure that the connection we just opened
 		// gets closed, preventing datasource connection leakage.
 		try {
+		    c.setAutoCommit(false);
+		    c.setSavepoint();
 		    PreparedStatement ps;
 		    String query = p.getProperty(TRANSACTIONS_QUERY_BASE_KEY,
 						 TRANSACTIONS_QUERY_BASE_DEFAULT);
@@ -324,6 +326,7 @@ public class SnapshotCache
 		    logger.trace("firstXid:"+potentialXids.first().getLong()+
 				 " lastXid:"+potentialXids.last().getLong()+
 				 " query:"+query);
+		    ps.setFetchSize(50);
 		    ResultSet rs = ps.executeQuery();
 		    while (rs.next()) {
 			TransactionID xid = new TransactionID(rs.getLong("xaction"));
@@ -336,6 +339,7 @@ public class SnapshotCache
 			    retVal.add(change);
 			}
 		    }
+		    c.rollback(); // Cause we should not have changed anything in the master DB
 		} finally {
 		    c.close();
 		}
