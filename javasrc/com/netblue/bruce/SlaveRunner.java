@@ -461,9 +461,7 @@ public class SlaveRunner implements Runnable
     private static final String SNAPSHOT_STATUS_SELECT_KEY = "bruce.slave.query";
     private static final String SNAPSHOT_STATUS_SELECT_DEFAULT = new StringBuilder()
             .append("select * from bruce.slavesnapshotstatus ")
-            .append("where slave_xaction = (")
-            .append("select max(slave_xaction) ")
-            .append("from bruce.slavesnapshotstatus) and clusterid = ?").toString();
+            .append("where clusterid = ?").toString();
 
     // Update existing record in status table
     private static final String SNAPSHOT_STATUS_UPDATE_KEY = "bruce.slave.updatestatus";
