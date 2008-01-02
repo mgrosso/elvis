@@ -284,6 +284,43 @@
         </javac>
     </target>
     
+    <target name="test-one-class" 
+            depends="jar, compile-test, make-test-data"
+	    description="Runs the tests in a single test class">
+        <fail message="property test.this.class must be set (ant -Dtest.this.class=[class name] test-one-class" unless="test.this.class"/>
+        <!-- Setup system properties for test data -->
+        <property name="dir.test.data" location="test/data"/>
+        <property name="dir.schema" location="schema"/>
+
+        <junit printsummary="yes" haltonfailure="no" fork="yes" forkmode="perTest" showoutput="yes">
+            <!-- lots o' system props -->
+            <jvmarg value="-Xmx1g"/>
+	    <jvmarg value="-Dlog4j.configuration=file://${basedir}/bin/log4j.properties"/>
+            <jvmarg value="-Dpostgresql.adminURL=${postgresql.adminURL}"/>
+            <jvmarg value="-Dpostgresql.db_name=${postgresql.db_name}"/>
+            <jvmarg value="-Dpostgresql.URL=${postgresql.URL}"/>
+            <jvmarg value="-Dpostgresql.bin=${postgresql.bin}"/>
+            <jvmarg value="-Dpostgresql.port=${postgresql.port}"/>
+            <jvmarg value="-Dpostgresql.user=${postgresql.user}"/>
+            <jvmarg value="-Dpostgresql.password=${postgresql.password}"/>
+            <jvmarg value="-Dhibernate.connection.url=${postgresql.URL}"/>
+            <jvmarg value="-Dhibernate.connection.username=${postgresql.user}"/>
+            <jvmarg value="-Dhibernate.connection.password=${postgresql.password}"/>
+            <jvmarg value="-Dhibernate.dialect=org.hibernate.dialect.PostgreSQLDialect"/>
+            <jvmarg value="-Ddir.test.data=${dir.test.data}"/>
+            <jvmarg value="-Ddir.schema=${dir.schema}"/>
+            <jvmarg value="-Dbruce.nextSnapshotUnavailableSleep=1000"/>
+            <classpath refid="classpath"/>
+            <formatter type="plain" usefile="false"/>
+
+            <batchtest fork="yes">
+                <fileset dir="test/src">
+                    <include name="**/${test.this.class}.java"/>
+                </fileset>
+            </batchtest>
+        </junit>
+    </target>
+    
     <target name="test"
             depends="jar, compile-test, make-test-data"
             description="overrides the generic test target">
@@ -324,7 +361,7 @@
         <junit printsummary="yes" haltonfailure="no" fork="yes" forkmode="perTest" showoutput="yes">
             <!-- lots o' system props -->
             <jvmarg value="-Xmx1g"/>
-	    <jvmarg value="-Dlog4j.configuration=${basedir}/bin/log4j.properties"/>
+	    <jvmarg value="-Dlog4j.configuration=file://${basedir}/bin/log4j.properties"/>
             <jvmarg value="-Dpostgresql.adminURL=${postgresql.adminURL}"/>
             <jvmarg value="-Dpostgresql.db_name=${postgresql.db_name}"/>
             <jvmarg value="-Dpostgresql.URL=${postgresql.URL}"/>
