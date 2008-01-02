@@ -157,6 +157,7 @@ class LogSwitchThread implements Runnable
                     " tabname text," +
                     " info text, " +
                     "PRIMARY KEY (xaction,rowid))");
+	    s.executeUpdate("grant all on "+newTransactionTableName+" to public");
 	    // newSnapshotTableName already starts with bruce.
             s.executeUpdate("create table " + newSnapshotTableName + " (" +
 			    " current_xaction bigint primary key," +
@@ -164,6 +165,7 @@ class LogSwitchThread implements Runnable
 			    " max_xaction bigint NOT NULL," +
 			    " outstanding_xactions text, "+
 			    " update_time timestamp without time zone default now())");
+	    s.executeUpdate("grant all on "+newSnapshotTableName+" to public");
             dropView(s);
             newView(s);
         }
@@ -245,6 +247,7 @@ class LogSwitchThread implements Runnable
             }
         }
         s.executeUpdate(createViewS);
+	s.executeUpdate("grant all on "+viewName+" to public");
         r.close();
     }
 }

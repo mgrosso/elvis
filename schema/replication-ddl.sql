@@ -75,8 +75,11 @@ CREATE TABLE bruce.snapshotlog_1 (
         update_time timestamp default now()
         );
 
+GRANT ALL ON bruce.snapshotlog_1 TO PUBLIC;
+
 CREATE VIEW bruce.snapshotlog AS SELECT * FROM snapshotlog_1;
 
+GRANT ALL ON bruce.snapshotlog TO PUBLIC;
 
 CREATE TABLE bruce.transactionlog_1 (
         rowid bigint DEFAULT nextval('bruce.transactionlog_rowseq'::regclass) UNIQUE,
@@ -86,9 +89,13 @@ CREATE TABLE bruce.transactionlog_1 (
         info text
         );
 
+GRANT ALL ON bruce.transactionlog_1 TO PUBLIC;
+
 CREATE INDEX transactionlog_1_xaction_idx ON bruce.transactionlog_1 USING btree (xaction);
 
 CREATE VIEW bruce.transactionlog AS SELECT * FROM bruce.transactionlog_1;
+
+GRANT ALL ON bruce.transactionlog TO PUBLIC;
 
 CREATE TABLE bruce.slavesnapshotstatus (
     clusterid bigint NOT NULL primary key,
@@ -99,3 +106,4 @@ CREATE TABLE bruce.slavesnapshotstatus (
     master_outstanding_xactions text,
     update_time timestamp without time zone default now() NOT NULL
 );
+
