@@ -67,7 +67,8 @@ Datum serializeCol(char *name,char *type,char *old,char *new);
 char *ConvertDatum2CString(Oid type,Datum d,bool isnull);
 char *deB64(char *s,bool *b);
 char *Datum2CString(Datum d);
-char *currentLogID(void);
+char *currentLogID(char *clusterId);
+char *currentCluster(void);
 void insertTransactionLog(char *cmd_type,char *schema,char *table,Datum row_data);
 Oid getTypeOid(char *typeName);
 bool colInUnique(char **uCols,int uColsCount,char *colName);
@@ -92,6 +93,9 @@ Datum applyLogTransaction(PG_FUNCTION_ARGS);
 static int replication_mode = MODE_NORMAL; 
 
 static TransactionId currentXid = InvalidTransactionId;
+
+static bool currentClusterIdSet = false;
+static char currentClusterId[25];
 
 /* Apply an update, delete, or insert logged by logTransactionTrigger to a 
    specified table */
@@ -144,7 +148,7 @@ Datum applyLogTransaction(PG_FUNCTION_ARGS) {
 
   /* Does this table have a primary key, or lacking that, a unique index */
   /* If we come out of this code with uColsCount>0, then, yes. */
-  sprintf(query,"select pg_get_indexdef(indexrelid) from pg_index where indisunique = true and indrelid = (select oid from pg_class where relname = substring('%s' from '%s') and relnamespace = (select oid from pg_namespace where nspname = substring('%s' from '%s'))) and indexprs is null order by indisprimary desc",tTableS,"\\\\.(.*)$",tTableS,"^(.*)\\\\.");
+  sprintf(query,"select pg_get_indexdef(indexrelid) from pg_index where indisunique = true and indrelid = (select oid from pg_class where relname = substring('%s' from E'%s') and relnamespace = (select oid from pg_namespace where nspname = substring('%s' from E'%s'))) and indexprs is null order by indisprimary desc",tTableS,"\\.(.*)$",tTableS,"^(.*)\\.");
   plan=SPI_prepare(query,0,plan_types);
   queryResult=SPI_exec(query,1);
   if (queryResult<0) {
@@ -362,8 +366,8 @@ Datum logSnapshot(PG_FUNCTION_ARGS) {
     
     /* build out the insert statement */
     sprintf(query,
-	    "insert into bruce.snapshotlog_%s (current_xaction,min_xaction,max_xaction,outstanding_xactions) values ($1,$2,$3,$4);",
-	    currentLogID());
+	    "insert into bruce.snapshotlog_%s_%s (current_xaction,min_xaction,max_xaction,outstanding_xactions) values ($1,$2,$3,$4);",
+	    currentCluster(),currentLogID(currentCluster()));
     
     plan_types[0]=INT8OID;
     plan_values[0]=DirectFunctionCall1(int8in,DirectFunctionCall1(xidout,TransactionIdGetDatum(currentXid)));
@@ -544,11 +548,28 @@ Datum serializeCol(char *name,char *type,char *old,char *new) {
 }
 
 /* Determine the current log id. Safe to presume we are SPI connected */
-char *currentLogID() {
-  SPI_exec("select max(id) from bruce.currentlog",1);
+char *currentLogID(char *clusterId) {
+  char query[1024];
+  sprintf(query,"select max(id) from bruce.currentlog_%s",clusterId);
+  SPI_exec(query,1);
   if (SPI_processed!=1) 
     ereport(ERROR,(errmsg_internal("Unable to determine current transaction/snapshot log id in currentLogID()")));
   return(SPI_getvalue(SPI_tuptable->vals[0],SPI_tuptable->tupdesc,1));
+}
+
+/* Determine current clusterId. Presume we are only called on a master, and that we are SPI connected */
+char *currentCluster() {
+  if (!currentClusterIdSet) {
+    SPI_exec("select cluster_id from bruce.masternode",1);
+    if (SPI_processed!=1)
+      ereport(ERROR,(errmsg_internal("Unable to determine Cluster ID for this presumed master")));
+    strncpy(currentClusterId,
+	    SPI_getvalue(SPI_tuptable->vals[0],SPI_tuptable->tupdesc,1),
+	    sizeof(currentClusterId)-1);
+    currentClusterId[sizeof(currentClusterId)-1]= '\0';
+    currentClusterIdSet=true;
+  }
+  return(currentClusterId);
 }
 
 /* Return a 'c' string from a presumed text Datum */
@@ -611,8 +632,9 @@ void insertTransactionLog(char *cmd_type,char *schema,char *table,Datum row_data
   void *plan;
 
   sprintf(query,
-	  "insert into bruce.transactionlog_%s (xaction,cmdtype,tabname,info) values ($1,'%s','%s.%s',$2);",
-	  currentLogID(),
+	  "insert into bruce.transactionlog_%s_%s (xaction,cmdtype,tabname,info) values ($1,'%s','%s.%s',$2);",
+	  currentCluster(),
+	  currentLogID(currentCluster()),
 	  cmd_type,
 	  schema,
 	  table);
