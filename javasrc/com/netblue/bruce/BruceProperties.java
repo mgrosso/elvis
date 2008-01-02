@@ -30,7 +30,7 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.TreeMap;
 
-class BruceProperties extends Properties
+public class BruceProperties extends Properties
 {
     private static final Logger logger = Logger.getLogger(BruceProperties.class.getName());
 

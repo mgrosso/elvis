@@ -22,11 +22,8 @@
 */
 package com.netblue.bruce.admin;
 
-import com.netblue.bruce.Snapshot;
-import com.netblue.bruce.TransactionID;
-import com.netblue.bruce.cluster.Cluster;
-import com.netblue.bruce.cluster.Node;
-import com.netblue.bruce.cluster.RegExReplicationStrategy;
+import com.netblue.bruce.*;
+import com.netblue.bruce.cluster.*;
 import org.apache.commons.dbcp.BasicDataSource;
 import org.apache.log4j.Logger;
 
@@ -204,6 +201,9 @@ public class NodeBuilder
         }
 
         // Now check to see if we have any data in the snapshot view.  If not, create a row
+	// First, make sure at least one snapshot/transaction log exists
+	LogSwitchThread lst = new LogSwitchThread(new BruceProperties(),dataSource);
+	lst.newLogTable(statement);
         ResultSet resultSet = statement.executeQuery("select count(*) from bruce.snapshotlog");
         if (resultSet.next())
         {

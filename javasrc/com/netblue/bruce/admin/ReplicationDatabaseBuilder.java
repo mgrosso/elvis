@@ -42,32 +42,15 @@ public class ReplicationDatabaseBuilder extends DatabaseBuilder
 
     private static final Logger logger = Logger.getLogger(ReplicationDatabaseBuilder.class);
     private static final String[] replicationDDL = 
-	{"DROP SCHEMA bruce",
+	{"DROP SCHEMA bruce cascade",
 	 "CREATE SCHEMA bruce",
 	 "GRANT usage ON SCHEMA bruce TO public",
-	 "DROP TABLE bruce.replication_version",
 	 "CREATE TABLE bruce.replication_version "+
 	 "           ( major int, "+
 	 "             minor int, "+
 	 "             patch int, "+
 	 "             name character(64))",
 	 "INSERT INTO bruce.replication_version VALUES (1, 0, 0, 'Replication 1.0 release')",
-	 "DROP TABLE bruce.currentlog",
-	 "DROP VIEW bruce.snapshotlog",
-	 "DROP TABLE bruce.snapshotlog_1",
-	 "DROP VIEW bruce.transactionlog",
-	 "DROP TABLE bruce.transactionlog_1",
-	 "DROP TABLE bruce.slavesnapshotstatus",
-	 "DROP INDEX bruce.transactionlog_1_xaction_idx",
-	 "DROP FUNCTION bruce.applylogtransaction(text, text, text) cascade",
-	 "DROP FUNCTION bruce.daemonmode() cascade",
-	 "DROP FUNCTION bruce.denyaccesstrigger() cascade",
-	 "DROP FUNCTION bruce.logsnapshottrigger() cascade",
-	 "DROP FUNCTION bruce.logsnapshot() cascade",
-	 "DROP FUNCTION bruce.logtransactiontrigger() cascade",
-	 "DROP FUNCTION bruce.normalmode() cascade",
-	 "DROP SEQUENCE bruce.currentlog_id_seq",
-	 "DROP SEQUENCE bruce.transactionlog_rowseq",
 	 "CREATE FUNCTION bruce.applylogtransaction(text, text, text) RETURNS boolean "+
 	 "             AS 'bruce.so', 'applyLogTransaction' LANGUAGE c",
 	 "CREATE FUNCTION bruce.daemonmode() RETURNS integer "+
@@ -82,7 +65,7 @@ public class ReplicationDatabaseBuilder extends DatabaseBuilder
 	 "             AS 'bruce.so', 'logTransactionTrigger' LANGUAGE c",
 	 "CREATE FUNCTION bruce.normalmode() RETURNS integer "+
 	 "             AS 'bruce.so', 'normalMode' LANGUAGE c",
-	 "CREATE OR REPLACE FUNCTION bruce.getslaves () RETURNS SETOF VARCHAR AS "+
+	 "CREATE FUNCTION bruce.getslaves () RETURNS SETOF VARCHAR AS "+
 	 "'"+
 	 "     select n.nspname||''.''||c.relname as tablename from pg_class c, pg_namespace n "+
 	 "      where c.relnamespace = n.oid "+
@@ -95,7 +78,7 @@ public class ReplicationDatabaseBuilder extends DatabaseBuilder
 	 "     order by 1; "+
 	 "' "+
 	 "LANGUAGE SQL",
-	 "CREATE OR REPLACE FUNCTION bruce.getmasters () RETURNS SETOF VARCHAR AS "+
+	 "CREATE FUNCTION bruce.getmasters () RETURNS SETOF VARCHAR AS "+
 	 "'"+
 	 "     select n.nspname||''.''||c.relname as tablename from pg_class c, pg_namespace n "+
 	 "      where c.relnamespace = n.oid "+
@@ -108,7 +91,7 @@ public class ReplicationDatabaseBuilder extends DatabaseBuilder
 	 "     order by 1; "+
 	 "' "+
 	 "LANGUAGE SQL",
-	 "CREATE SEQUENCE bruce.currentlog_id_seq INCREMENT BY 1 NO MAXVALUE NO MINVALUE CACHE 1",
+	 "CREATE SEQUENCE bruce.currentlog_id_seq INCREMENT BY 1 NO MAXVALUE MINVALUE 0 START WITH 0 CACHE 1",
 	 "CREATE SEQUENCE bruce.transactionlog_rowseq "+
 	 "      INCREMENT BY 1 NO MAXVALUE NO MINVALUE CACHE 1",
 	 "GRANT ALL ON bruce.transactionlog_rowseq TO public",
@@ -117,29 +100,6 @@ public class ReplicationDatabaseBuilder extends DatabaseBuilder
 	 "                        NOT NULL primary key, "+
 	 "             create_time timestamp without time zone DEFAULT now() NOT NULL)",
 	 "GRANT select ON bruce.currentlog TO public",
-	 "SELECT pg_catalog.setval('bruce.currentlog_id_seq', 1, true)",
-	 "insert into bruce.currentlog (id, create_time) values (1, now())",
-	 "CREATE TABLE bruce.snapshotlog_1 "+
-	 "           ( current_xaction bigint primary key, "+
-	 "             min_xaction bigint NOT NULL, "+
-	 "             max_xaction bigint NOT NULL, "+
-	 "             outstanding_xactions text, "+
-	 "             update_time timestamp default now())",
-	 "GRANT ALL ON bruce.snapshotlog_1 TO PUBLIC",
-	 "CREATE VIEW bruce.snapshotlog AS SELECT * FROM snapshotlog_1",
-	 "GRANT ALL ON bruce.snapshotlog TO PUBLIC",
-	 "CREATE TABLE bruce.transactionlog_1 "+
-	 "           ( rowid bigint DEFAULT nextval('bruce.transactionlog_rowseq'::regclass) "+
-	 "                          UNIQUE, "+
-	 "             xaction integer, "+
-	 "             cmdtype character(1), "+
-	 "             tabname text, "+
-	 "             info text)",
-	 "GRANT ALL ON bruce.transactionlog_1 TO PUBLIC",
-	 "CREATE INDEX transactionlog_1_xaction_idx "+
-	 "          ON bruce.transactionlog_1 USING btree (xaction)",
-	 "CREATE VIEW bruce.transactionlog AS SELECT * FROM bruce.transactionlog_1",
-	 "GRANT ALL ON bruce.transactionlog TO PUBLIC",
 	 "CREATE TABLE bruce.slavesnapshotstatus "+
 	 "           ( clusterid bigint NOT NULL primary key, "+
 	 "             slave_xaction bigint NOT NULL, "+

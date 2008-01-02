@@ -30,7 +30,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 
-class LogSwitchThread implements Runnable
+public class LogSwitchThread implements Runnable
 {
 
     private static final Logger logger = Logger.getLogger(LogSwitchThread.class);
@@ -130,7 +130,10 @@ class LogSwitchThread implements Runnable
 
     // If the rotate time has passed for the latest transaction/snapshot logs, create new tables and
     // relevant views
-    private void newLogTable(Statement s) throws SQLException
+    //
+    // public because we use this method in places to guarentee that at least one snapshot/transaction log
+    // exists.
+    public void newLogTable(Statement s) throws SQLException
     {
         logger.debug("Figuring out if its time to create a new log table.");
         ResultSet r = s.executeQuery("select now()>create_time + interval '" + rotateFrequency + " minutes'" +

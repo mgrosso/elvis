@@ -22,6 +22,7 @@
 */
 package com.netblue.bruce;
 
+import com.netblue.bruce.*;
 import com.netblue.bruce.cluster.Cluster;
 import com.netblue.bruce.cluster.ClusterFactory;
 import org.apache.commons.dbcp.BasicDataSource;
@@ -35,7 +36,7 @@ import org.junit.Before;
 import org.junit.Test;
 
 import java.io.FileInputStream;
-import java.sql.SQLException;
+import java.sql.*;
 import java.util.SortedSet;
 import java.util.TreeSet;
 
@@ -63,6 +64,13 @@ public class SlaveRunnerTest extends ReplicationTest
                 masterDataSource.setDriverClassName(System.getProperty("bruce.jdbcDriverName", "org.postgresql.Driver"));
                 masterDataSource.setValidationQuery(System.getProperty("bruce.poolQuery", "select now()"));
             }
+	    // Make sure that at least one snapshot/transaction log exists before we do anything else
+	    LogSwitchThread lt = new LogSwitchThread(new BruceProperties(),masterDataSource);
+	    Connection c = masterDataSource.getConnection();
+	    Statement s = c.createStatement();
+	    lt.newLogTable(s);
+	    c.close();
+	    s.close();
         }
         catch (Exception e)
         {

@@ -22,14 +22,11 @@
 */
 package com.netblue.bruce;
 
-import com.netblue.bruce.admin.ReplicationDatabaseBuilder;
-import com.netblue.bruce.cluster.Cluster;
-import com.netblue.bruce.cluster.ClusterInitializationException;
-import com.netblue.bruce.cluster.Node;
+import com.netblue.bruce.admin.*;
+import com.netblue.bruce.cluster.*;
 import org.apache.log4j.*;
 import static org.junit.Assert.*;
-import org.junit.BeforeClass;
-import org.junit.Test;
+import org.junit.*;
 
 import java.sql.*;
 import java.util.Set;
@@ -63,6 +60,8 @@ public class ReplicationDaemonTest extends ReplicationTest
         super.setUpDatabase(connection);
 	ReplicationDatabaseBuilder rdb = new ReplicationDatabaseBuilder();
         TestDatabaseHelper.applyDDLFromSArray(connection, rdb.getSqlStrings());
+	ConfigurationDatabaseBuilder cdb = new ConfigurationDatabaseBuilder();
+	TestDatabaseHelper.applyDDLFromSArray(connection, cdb.getSqlStrings());
     }
 
     // Setup slavesnapshotstatus if it is not already set up.

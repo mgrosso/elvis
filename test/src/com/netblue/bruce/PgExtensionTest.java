@@ -26,6 +26,7 @@ import junit.framework.JUnit4TestAdapter;
 import org.apache.log4j.Logger;
 import org.apache.log4j.Level;
 import org.junit.*;
+import static org.junit.Assert.*;
 
 import java.io.File;
 import java.nio.ByteBuffer;
@@ -65,6 +66,10 @@ public class PgExtensionTest extends ReplicationTest
         try
         {
             super.setUpDatabase(connection);
+	    // We need at least one snapshot/transaction log table for these tests to work. 
+	    LogSwitchThread lt = new LogSwitchThread(new BruceProperties(),TestDatabaseHelper.getTestDataSource());
+	    Statement s = TestDatabaseHelper.getTestDatabaseConnection().createStatement();
+	    lt.newLogTable(s);
             TestDatabaseHelper.applyDDLFromFile(connection, SCHEMA_UNIT_TESTS_DDL_SQL);
             initSlave(connection);
             Statement statement = connection.createStatement();
