@@ -1,8 +1,6 @@
 <project name="bruce" default="compile" basedir=".">
     <!-- $Id: build.xml 72521 2007-06-27 15:56:40Z lball $ -->
 
-    <property name="bruce.version" value="0.5"/>
-
     <import file="build-pg-extension.xml"/>
 
     <property file="build.properties"/>
