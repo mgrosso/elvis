@@ -11,21 +11,21 @@
             <value>true</value>
             <value>Cluster 0 - Primary master</value>
             <value>jdbc:postgresql://localhost:5432/bruce_master?user=bruce</value>
-            <value>replication_test\..+</value>
+            <value>.*_test\..+</value>
         </row>
         <row>
             <value>2</value>
             <value>true</value>
             <value>Cluster 0 - Slave Uno</value>
             <value>jdbc:postgresql://localhost:5432/bruce_slave_1?user=bruce</value>
-            <value>replication_test\..+</value>
+            <value>.*_test\..+</value>
         </row>
         <row>
             <value>3</value>
             <value>true</value>
             <value>Cluster 0 - Slave Dos</value>
             <value>jdbc:postgresql://localhost:5432/bruce_slave_2?user=bruce</value>
-            <value>replication_test\..+</value>
+            <value>.*_test\..+</value>
         </row>
     </table>
     <table name="bruce.yf_cluster">

@@ -341,7 +341,7 @@ public class TestDatabaseHelper
         if (adminDataSource == null)
         {
             LOGGER.debug("Creating admin DataSource");
-            adminDataSource = createDataSource(getPostgresProperties(), "postgresql.adminURL");
+            adminDataSource = createDataSource(getPostgresProperties(), POSTGRESQL_ADMIN_URL_KEY);
         }
         return adminDataSource;
     }
@@ -403,4 +403,5 @@ public class TestDatabaseHelper
     private static Connection testDatabaseConnection;
     static final String BASE_POSTGRES_URL = "jdbc:postgresql://localhost:5432/";
     public static final String CONFIG_DB = "bruce";
+    public static final String POSTGRESQL_ADMIN_URL_KEY = "postgresql.adminURL";
 }
