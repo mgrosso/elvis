@@ -62,7 +62,52 @@
               <filter token="DB_PORT" value="${postgresql.port}"/>
             </filterset>
         </copy>
+	<copy file="${dir.test.data}/includetable-regexp.xml.template" 
+	      tofile="${dir.test.data}/includetable-regexp-0.xml">
+	  <filterset>
+	    <filter token="INCLUDETABLE" value=""/>     
+	  </filterset>
+	</copy> 
+	<copy file="${dir.test.data}/includetable-regexp.xml.template" 
+	      tofile="${dir.test.data}/includetable-regexp-1.xml">
+	  <filterset>
+	    <filter token="INCLUDETABLE" value="1"/>     
+	  </filterset>
+	</copy> 
+	<copy file="${dir.test.data}/includetable-regexp.xml.template" 
+	      tofile="${dir.test.data}/includetable-regexp-27.xml">
+	  <filterset>
+	    <filter token="INCLUDETABLE" value="123456789112345678921234567"/>     
+	  </filterset>
+	</copy> 
+	<copy file="${dir.test.data}/includetable-regexp.xml.template" 
+	      tofile="${dir.test.data}/includetable-regexp-27.xml">
+	  <filterset>
+	    <filter token="INCLUDETABLE" value="123456789112345678921234567"/>     
+	  </filterset>
+	</copy> 
+	<copy file="${dir.test.data}/includetable-regexp.xml.template" 
+	      tofile="${dir.test.data}/includetable-regexp-255.xml">
+	  <filterset>
+	    <filter token="INCLUDETABLE" value="123456789112345678921234567893123456789041234567895123456789612345678971234567898123456789912345678911234567891123456789212345678931234567890412345678951234567896123456789712345678981234567899123456789212345678911234567892123456789312345678904123456789512345"/>
+	  </filterset>
+	</copy> 
+	<copy file="${dir.test.data}/includetable-regexp.xml.template" 
+	      tofile="${dir.test.data}/includetable-regexp-256.xml">
+	  <filterset>
+	    <filter token="INCLUDETABLE" value="1234567891123456789212345678931234567890412345678951234567896123456789712345678981234567899123456789112345678911234567892123456789312345678904123456789512345678961234567897123456789812345678991234567892123456789112345678921234567893123456789041234567895123456"/>
+	  </filterset>
+	</copy> 
+	<copy file="${dir.test.data}/includetable-regexp.xml.template" 
+	      tofile="${dir.test.data}/includetable-regexp-1256.xml">
+	  <filterset>
+	    <filter token="INCLUDETABLE" value="123456789112345678921234567893123456789041234567895123456789612345678971234567898123456789912345678911234567891123456789212345678931234567890412345678951234567896123456789712345678981234567899123456789212345678911234567892123456789312345678904123456789512345678961234567897123456789812345678991234567893123456789112345678921234567893123456789041234567895123456789612345678971234567898123456789912345678941234567891123456789212345678931234567890412345678951234567896123456789712345678981234567899123456789512345678911234567892123456789312345678904123456789512345678961234567897123456789812345678991234567896123456789112345678921234567893123456789041234567895123456789612345678971234567898123456789912345678971234567891123456789212345678931234567890412345678951234567896123456789712345678981234567899123456789812345678911234567892123456789312345678904123456789512345678961234567897123456789812345678991234567899123456789112345678921234567893123456789041234567895123456789612345678971234567898123456789912345678911234567891123456789212345678931234567890412345678951234567896123456789712345678981234567899123456789112345678911234567892123456789312345678904123456789512345678961234567897123456789812345678991234567892123456789112345678921234567893123456789041234567895123456"/>
+	  </filterset>
+	</copy> 
     </target>
+
+<!-- 12345678911234567892123456789312345678904123456789512345678961234567897123456789812345678991234567891 -->
+
 
     <target name="schemaexport" depends="compile, make-hibernate-config">
         <echo message="Using PostgreSQL URL: ${postgresql.URL}"/>
@@ -89,6 +134,8 @@
     <!-- =============================================== -->
     <target name="compile" description="Compiles java source">
         <mkdir dir="${dir.classes}"/>
+        <copy file="${dir.schema}/cluster-ddl.sql" todir="${dir.classes}"/>
+        <copy file="${dir.schema}/replication-ddl.sql" todir="${dir.classes}"/>
         <copy todir="${dir.classes}">
             <fileset dir="${dir.src}"
                      includes="**/*.properties,**/*.xml,,**/*.template"
@@ -223,7 +270,7 @@
     <!-- =============================================== -->
     <!-- Compile tests                                   -->
     <!-- =============================================== -->
-    <target name="compile-test" description="Compiles junit tests" depends="compile">
+    <target name="compile-test" description="Compiles junit tests" depends="compile, make-hibernate-config">
         <mkdir dir="${dir.test.classes}"/>
         <copy todir="${dir.classes}">
             <fileset dir="${dir.test}"

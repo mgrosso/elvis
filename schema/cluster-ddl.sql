@@ -32,7 +32,7 @@
     create table bruce.YF_NODE (
         id int8 not null,
         available bool,
-        includeTable varchar(255),
+        includeTable text,
         name varchar(255) not null,
         uri varchar(255) not null,
         primary key (id)

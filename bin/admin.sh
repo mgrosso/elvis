@@ -41,19 +41,17 @@ fi
 # Setup the classpath
 LIB_DIR=../lib
 
-CLASSPATH="$LIB_DIR"/../bruce.jar:"$LIB_DIR"/commons-collections-3.2.jar:"$LIB_DIR"/commons-dbcp-1.2.1.jar
-CLASSPATH="$CLASSPATH":"$LIB_DIR"/commons-lang-2.3.jar:"$LIB_DIR"/commons-pool-1.3.jar:"$LIB_DIR"/log4j-1.2.14.jar
-CLASSPATH="$CLASSPATH":"$LIB_DIR"/postgresql-8.1-407.jdbc3.jar:"$LIB_DIR"/args4j-2.0.7.jar:"$LIB_DIR"/dbunit-2.2.jar
-CLASSPATH="$CLASSPATH":"$LIB_DIR"/hibernate/hibernate3.jar:"$LIB_DIR"/hibernate/hibernate-annotations.jar:"$LIB_DIR"/hibernate/hibernate-commons-annotations.jar
-CLASSPATH="$CLASSPATH":"$LIB_DIR"/hibernate/commons-logging-1.0.4.jar:"$LIB_DIR"/hibernate/c3p0-0.9.1.jar
-CLASSPATH="$CLASSPATH":"$LIB_DIR"/hibernate/asm.jar:"$LIB_DIR"/hibernate/asm-attrs.jar:"$LIB_DIR"/hibernate/jta.jar
-CLASSPATH="$CLASSPATH":"$LIB_DIR"/hibernate/cglib-2.1.3.jar:"$LIB_DIR"/hibernate/dom4j-1.6.1.jar
-CLASSPATH="$CLASSPATH":"$LIB_DIR"/hibernate/ehcache-1.2.3.jar:"$LIB_DIR"/hibernate/ejb3-persistence.jar
-CLASSPATH="$CLASSPATH":"$LIB_DIR"/hibernate/jdbc2_0-stdext.jar:"$LIB_DIR"/hibernate/jta.jar:"$LIB_DIR"/hibernate/xml-apis.jar
-CLASSPATH="$CLASSPATH":"$JAVA_HOME"/lib/tools.jar
+if [ -d ../build/classes ] ; then
+    CLASSPATH="../build/classes"
+else
+    CLASSPATH="../bruce.jar"
+fi
+
+for JAR in `find $LIB_DIR -name '*.jar'` ; do
+    CLASSPATH=$CLASSPATH:$JAR
+done
 
 RUN_JAVA=$JAVA_HOME/bin/java
-
 
 echo "Using JAVA_HOME:      $JAVA_HOME"
 
