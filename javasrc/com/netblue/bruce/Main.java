@@ -31,7 +31,7 @@ import java.io.File;
  * up loggers, daemonizing the process, and ensuring that we shut down cleanly.
  * 
  * @author lanceball
- * @version $Id: Main.java 72519 2007-06-27 14:24:08Z lball $
+ * @version $Id$
  */
 public class Main
 {
@@ -48,6 +48,12 @@ public class Main
                 fatalError("Usage: startup.sh [cluster name]");
             }
 
+	    if (args[0].equals("-v") || args[0].equals("-version")) {
+		// We dont have log4j yet
+		System.out.println("$Id$");
+		System.out.println("Bruce Replication 1.0");
+		System.exit(0);
+	    }
 
             // Be sure any log messages generated before we daemonize are sent to System.err
             // just in case something bad happens on startup
