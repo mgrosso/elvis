@@ -1,6 +1,19 @@
 #!/bin/bash
-#------------------------------------------------------------------------------------
-# This script will run a stress test of the replication system using the Pg  
+#------------------------------------------------------------------------------
+# This script will run a stress test of the replication system, with the
+# following steps:
+#
+# Shutdown any running replication daemon and remove log files.
+# Create 4 databases: bruce_config, bruce_master, bruce_slave_1
+#   and bruce_slave_2.
+# Initialize the configuration database and load it with sample
+#   cluster data from ../data/config.xml
+# Start the replication daemon for the sample cluster
+# Run pgJDBCBench on the master database
+# Print the size of the replicated tables for all databases
+# Shutdown the daemon
+#------------------------------------------------------------------------------
+
 
 PRGDIR=`dirname "$0"`
 cd $PRGDIR
@@ -19,7 +32,7 @@ done
 
 PSQL_COMMAND=psql
 
-RESULTS_FILE=../test/results.sql
+RESULTS_FILE=../data/results.sql
 CONFIG_DB=jdbc:postgresql://localhost:5432/bruce_config?user=bruce
 MASTER_DB=jdbc:postgresql://localhost:5432/bruce_master?user=bruce
 SLAVE1_DB=jdbc:postgresql://localhost:5432/bruce_slave_1?user=bruce

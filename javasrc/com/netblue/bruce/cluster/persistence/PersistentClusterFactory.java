@@ -55,6 +55,7 @@ public class PersistentClusterFactory extends ClusterFactory
     {
         final Configuration configuration = new AnnotationConfiguration().configure();
         configuration.addProperties(System.getProperties());
+        LOGGER.debug(configuration.getProperty("hibernate.connection.url"));
         sessionFactory = configuration.buildSessionFactory();
         Session initSession = null;
         Transaction tx = null;

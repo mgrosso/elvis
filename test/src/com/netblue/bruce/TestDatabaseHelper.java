@@ -50,14 +50,36 @@ import java.util.StringTokenizer;
  */
 public class TestDatabaseHelper
 {
-    public static String buildUrl(String dbName)
-    {
-        return new StringBuilder().append(BASE_POSTGRES_URL).append(dbName).append("?user=bruce&password=bruce").toString();
-    }
-
     private static final Logger LOGGER = Logger.getLogger(TestDatabaseHelper.class);
     static { LOGGER.setLevel(Level.DEBUG); }
+
+    public static final String DDL_DELIMITER             = ";";
+    public static final String CONFIG_DB                 = "bruce";
+    public static final String POSTGRESQL_ADMIN_URL_KEY  = "postgresql.adminURL";
+    public static final String POSTGRESQL_TEST_URL_KEY   = "postgresql.URL";
+    public static final String POSTGRESQL_PORT_KEY      = "postgresql.port";
+    public static final String POSTGRESQL_PORT_DEFAULT  = "5432";
+    public static final String JDBC_POSTGRESQL_PREFIX = "jdbc:postgresql://localhost:";
     
+    public static synchronized Properties getPostgresProperties()
+    {
+        if (postgresProperties == null)
+        {
+            postgresProperties = new Properties(System.getProperties());
+        }
+        return postgresProperties;
+    }
+
+    public static String getBasePostgresUrl()
+    {
+        return JDBC_POSTGRESQL_PREFIX + getPostgresProperties().getProperty(POSTGRESQL_PORT_KEY, POSTGRESQL_PORT_DEFAULT) + "/";
+    }
+
+    public static String buildUrl(String dbName)
+    {
+        return new StringBuilder().append(getBasePostgresUrl()).append(dbName).append("?user=bruce&password=bruce").toString();
+    }
+
     public static void executeAndLogSupressingExceptions(Statement statement, String query)
     {
         try
@@ -385,23 +407,9 @@ public class TestDatabaseHelper
         }
     }
 
-    public static synchronized Properties getPostgresProperties()
-    {
-        if (postgresProperties == null)
-        {
-            postgresProperties = new Properties(System.getProperties());
-            postgresProperties.putAll(System.getProperties());
-        }
-        return postgresProperties;
-    }
 
-    public static final String DDL_DELIMITER = ";";
-    public static final String POSTGRESQL_TEST_URL_KEY = "postgresql.URL";
     private static BasicDataSource testDataSource;
     private static Properties postgresProperties;
     private static BasicDataSource adminDataSource;
     private static Connection testDatabaseConnection;
-    static final String BASE_POSTGRES_URL = "jdbc:postgresql://localhost:5432/";
-    public static final String CONFIG_DB = "bruce";
-    public static final String POSTGRESQL_ADMIN_URL_KEY = "postgresql.adminURL";
 }

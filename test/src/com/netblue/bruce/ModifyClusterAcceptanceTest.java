@@ -56,7 +56,14 @@ public class ModifyClusterAcceptanceTest extends ReplicationTest
     {
         super.setUp();
         // First let's ensure out database is setup correctly for the test
-        SetupClusterFromExistingDbAcceptanceTest.createTestSchemas();
+        try
+        {
+            SetupClusterFromExistingDbAcceptanceTest.createTestSchemas();
+        }
+        catch (Exception e)
+        {
+            LOGGER.error("Cannot create test schemas!", e);
+        }
     }
 
     @Test
@@ -129,7 +136,6 @@ public class ModifyClusterAcceptanceTest extends ReplicationTest
 
         com.netblue.bruce.admin.Main.main(args);
 
-        // TODO:  After the change, check to be sure that the daemon is now a slave and the slave is now a daemon
         // TODO:  After the change, check to be sure that the daemon snapshotlog and transaction log tables are correct
         // TODO:  After the change, check to be sure that the slavesnapshotstatus table is correct
 

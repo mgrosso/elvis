@@ -10,7 +10,7 @@
             <value>4</value>
             <value>true</value>
             <value>Cluster 0 - Slave Three</value>
-            <value>jdbc:postgresql://localhost:5432/bruce_slave_2?user=bruce</value>
+            <value>jdbc:postgresql://localhost:@DB_PORT@/bruce_slave_2?user=bruce</value>
             <value>replication_test\..+</value>
         </row>
     </table>

@@ -8,7 +8,7 @@
         <row>
             <value>10</value>
             <value>Restored From Backup</value>
-            <value>jdbc:postgresql://localhost:5432/new_slave_node?user=bruce</value>
+            <value>jdbc:postgresql://localhost:@DB_PORT@/new_slave_node?user=bruce</value>
             <value>replication_test\.replicate_.+</value>
         </row>
     </table>

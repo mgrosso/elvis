@@ -58,6 +58,7 @@ public class SetupClusterFromExistingDbAcceptanceTest
         slave1DS = TestDatabaseHelper.createDataSource(properties, SLAVE1_URL_KEY);
         slave2DS = TestDatabaseHelper.createDataSource(properties, SLAVE2_URL_KEY);
         configDS = TestDatabaseHelper.createDataSource(properties, CONFIG_URL_KEY);
+
         createDatabases(properties);
     }
 
@@ -189,9 +190,9 @@ public class SetupClusterFromExistingDbAcceptanceTest
         {
             try
             {
-                resultSet.close();
-                statement.close();
-                connection.close();
+                if (resultSet != null) { resultSet.close(); }
+                if (statement != null) { statement.close(); }
+                if (connection != null) { connection.close(); }
             }
             catch (SQLException e)
             {
@@ -225,9 +226,9 @@ public class SetupClusterFromExistingDbAcceptanceTest
         {
             try
             {
-                resultSet.close();
-                statement.close();
-                connection.close();
+                if (resultSet != null) { resultSet.close(); }
+                if (statement != null) { statement.close(); }
+                if (connection != null) { connection.close(); }
             }
             catch (SQLException e)
             {
@@ -312,9 +313,9 @@ public class SetupClusterFromExistingDbAcceptanceTest
         {
             try
             {
-                resultSet.close();
-                statement.close();
-                connection.close();
+                if (resultSet != null) { resultSet.close(); }
+                if (statement != null) { statement.close(); }
+                if (connection != null) { connection.close(); }
             }
             catch (SQLException e)
             {
@@ -347,9 +348,9 @@ public class SetupClusterFromExistingDbAcceptanceTest
         {
             try
             {
-                resultSet.close();
-                statement.close();
-                connection.close();
+                if (resultSet != null) { resultSet.close(); }
+                if (statement != null) { statement.close(); }
+                if (connection != null) { connection.close(); }
             }
             catch (SQLException e)
             {

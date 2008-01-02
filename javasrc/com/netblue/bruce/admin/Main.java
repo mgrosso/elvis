@@ -36,6 +36,7 @@ import org.dbunit.dataset.IDataSet;
 import org.dbunit.dataset.ITable;
 import org.dbunit.dataset.xml.XmlDataSet;
 import org.dbunit.operation.DatabaseOperation;
+import org.dbunit.operation.TransactionOperation;
 import org.kohsuke.args4j.CmdLineException;
 import org.kohsuke.args4j.CmdLineParser;
 
@@ -237,7 +238,8 @@ public class Main
         }
 
         // insert/update/delete rows in DB based on file
-        operation.execute(dataSourceConnection, dataSet);
+        TransactionOperation transactionOperation = new TransactionOperation(operation);
+        transactionOperation.execute(dataSourceConnection, dataSet);
         dataSourceConnection.close();
 
         // Now that we've loaded the nodes, let's get instances of what was loaded

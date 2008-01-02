@@ -7,6 +7,7 @@
     <property file="postgres.properties"/>
 
     <property name="dir.schema" location="schema"/>
+    <property name="dir.test.data" location="test/data"/>
 
     <!-- override the generic build file's classpath.  it includes waaaayyy too much stuff
          This classpath override has to be AFTER the import of generic-build.xml.
@@ -37,7 +38,36 @@
         </copy>
     </target>
 
+    <target name="make-test-data">
+        <copy file="${dir.test.data}/admin-test-insert.xml.template" tofile="${dir.test.data}/admin-test-insert.xml">
+            <filterset>
+              <filter token="DB_PORT" value="${postgresql.port}"/>
+            </filterset>
+        </copy>
+        <copy file="${dir.test.data}/admin-test-setup.xml.template" tofile="${dir.test.data}/admin-test-setup.xml">
+            <filterset>
+              <filter token="DB_PORT" value="${postgresql.port}"/>
+            </filterset>
+        </copy>
+        <copy file="${dir.test.data}/admin-test-slave-from-backup.xml.template" tofile="${dir.test.data}/admin-test-slave-from-backup.xml">
+            <filterset>
+              <filter token="DB_PORT" value="${postgresql.port}"/>
+            </filterset>
+        </copy>
+        <copy file="${dir.test.data}/admin-test-insert.xml.template" tofile="${dir.test.data}/admin-test-swap-master-slave.xml">
+            <filterset>
+              <filter token="DB_PORT" value="${postgresql.port}"/>
+            </filterset>
+        </copy>
+        <copy file="${dir.test.data}/slave-status.xml.template" tofile="${dir.test.data}/slave-status.xml">
+            <filterset>
+              <filter token="DB_PORT" value="${postgresql.port}"/>
+            </filterset>
+        </copy>
+    </target>
+
     <target name="schemaexport" depends="compile, make-hibernate-config">
+        <echo message="Using PostgreSQL URL: ${postgresql.URL}"/>
         <property name="hibernate.connection.url" value="${postgresql.URL}"/>
         <hibernatetool destdir="${dir.schema}">
             <annotationconfiguration configurationFile="${hibernate.config}"/>
@@ -205,7 +235,7 @@
 	 Other options are available. See the discussion under "Use of external tasks" at 
 	 http://ant.apache.org/manual/using.html#tasks  -->
     <target name="test"
-            depends="jar, compile-test, install_pg_extension"
+            depends="jar, compile-test, install_pg_extension, make-test-data"
             description="overrides the generic test target">
 
         <!-- Load the test schema and setup system properties for test data -->
@@ -251,8 +281,12 @@
             <jvmarg value="-Dpostgresql.db_name=${postgresql.db_name}"/>
             <jvmarg value="-Dpostgresql.URL=${postgresql.URL}"/>
             <jvmarg value="-Dpostgresql.bin=${postgresql.bin}"/>
+            <jvmarg value="-Dpostgresql.port=${postgresql.port}"/>
+            <jvmarg value="-Dpostgresql.user=${postgresql.user}"/>
+            <jvmarg value="-Dpostgresql.password=${postgresql.password}"/>
             <jvmarg value="-Dhibernate.connection.url=${postgresql.URL}"/>
-            <jvmarg value="-Dhibernate.connection.username=${user.name}"/>
+            <jvmarg value="-Dhibernate.connection.username=${postgresql.user}"/>
+            <jvmarg value="-Dhibernate.connection.password=${postgresql.password}"/>
             <jvmarg value="-Dhibernate.dialect=org.hibernate.dialect.PostgreSQLDialect"/>
             <jvmarg value="-Ddir.test.data=${dir.test.data}"/>
             <jvmarg value="-Ddir.schema=${dir.schema}"/>
@@ -301,7 +335,6 @@
 	<fail message="property test.this.class must be set (ant -Dtest.this.class=[class name] test-one-class" unless="test.this.class"/>
         <antcall target="schemaexport"/>
         <mkdir dir="${dir.junit.output}/xml"/>
-        <property name="dir.test.data" location="test/data"/>
         <property name="dir.schema" location="schema"/>
         <junit printsummary="yes" haltonfailure="no" fork="yes" showoutput="yes">
 	    <jvmarg value="-Xmx512m"/>

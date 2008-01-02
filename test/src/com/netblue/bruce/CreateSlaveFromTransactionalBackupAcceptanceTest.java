@@ -29,6 +29,7 @@ import org.apache.commons.dbcp.BasicDataSource;
 import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
 import org.junit.Assert;
+import org.junit.Before;
 import org.junit.Test;
 
 import javax.sql.DataSource;
@@ -46,6 +47,12 @@ import java.sql.Statement;
  */
 public class CreateSlaveFromTransactionalBackupAcceptanceTest extends ReplicationTest
 {
+    @Before
+    public void setPostgresPort()
+    {
+        port = TestDatabaseHelper.getPostgresProperties().getProperty(TestDatabaseHelper.POSTGRESQL_PORT_KEY, TestDatabaseHelper.POSTGRESQL_PORT_DEFAULT);
+    }
+    
     @Test
     public void testCreateSlaveFromMasterBackup() 
     {
@@ -72,7 +79,9 @@ public class CreateSlaveFromTransactionalBackupAcceptanceTest extends Replicatio
             // Use psql to load a dump of a master database
             final String postgresBinDir = System.getProperty("postgresql.bin");
             final String psqlBinary = (postgresBinDir == null ? "" : postgresBinDir + "/") + "psql";
-            final String command = psqlBinary + " " + NEW_DB + " -f " + TestDatabaseHelper.getDataFile("bruce_master.dump.sql").getAbsolutePath();
+            final String command = psqlBinary + " -p " + System.getProperty("postgresql.port")
+                    + " -U " + System.getProperty("postgresql.user") + " " + NEW_DB
+                    + " -f " + TestDatabaseHelper.getDataFile("bruce_master.dump.sql").getAbsolutePath();
             LOGGER.info("Restoring master database from backup.  Command = " + command);
             final Process process = Runtime.getRuntime().exec(command);
             process.waitFor();
@@ -96,7 +105,7 @@ public class CreateSlaveFromTransactionalBackupAcceptanceTest extends Replicatio
             // We need to be sure that the node was added.  First check the config DB to see if it's there
             final Node addedNode = ClusterFactory.getClusterFactory().getNode("Restored From Backup");
             Assert.assertNotNull("New node was not added correctly", addedNode);
-            Assert.assertEquals("Wrong URI for new node", "jdbc:postgresql://localhost:5432/new_slave_node?user=bruce", addedNode.getUri());
+            Assert.assertEquals("Wrong URI for new node", "jdbc:postgresql://localhost:"+port+"/new_slave_node?user=bruce", addedNode.getUri());
             Assert.assertEquals("Wrong ID for new node", 10L, addedNode.getId());
             Assert.assertEquals("Wrong INCLUDE_TABLE for new node", "replication_test\\.replicate_.+", addedNode.getIncludeTable());
 
@@ -182,7 +191,9 @@ public class CreateSlaveFromTransactionalBackupAcceptanceTest extends Replicatio
             // Use psql to load a dump of a master database
             final String postgresBinDir = System.getProperty("postgresql.bin");
             final String psqlBinary = (postgresBinDir == null ? "" : postgresBinDir + "/") + "psql";
-            final String command = psqlBinary + " " + NEW_DB + " -f " + TestDatabaseHelper.getDataFile("bruce_slave_1.dump.sql").getAbsolutePath();
+            final String command = psqlBinary + " -p " + System.getProperty("postgresql.port") + " "
+                    + " -U " + System.getProperty("postgresql.user") + " " + NEW_DB
+                    + " -f " + TestDatabaseHelper.getDataFile("bruce_slave_1.dump.sql").getAbsolutePath();
             LOGGER.info("Restoring master database from backup.  Command = " + command);
             final Process process = Runtime.getRuntime().exec(command);
             process.waitFor();
@@ -206,7 +217,7 @@ public class CreateSlaveFromTransactionalBackupAcceptanceTest extends Replicatio
             // We need to be sure that the node was added.  First check the config DB to see if it's there
             final Node addedNode = ClusterFactory.getClusterFactory().getNode("Restored From Backup");
             Assert.assertNotNull("New node was not added correctly", addedNode);
-            Assert.assertEquals("Wrong URI for new node", "jdbc:postgresql://localhost:5432/new_slave_node?user=bruce", addedNode.getUri());
+            Assert.assertEquals("Wrong URI for new node", "jdbc:postgresql://localhost:"+port+"/new_slave_node?user=bruce", addedNode.getUri());
             Assert.assertEquals("Wrong ID for new node", 10L, addedNode.getId());
             Assert.assertEquals("Wrong INCLUDE_TABLE for new node", "replication_test\\.replicate_.+", addedNode.getIncludeTable());
 
@@ -262,4 +273,5 @@ public class CreateSlaveFromTransactionalBackupAcceptanceTest extends Replicatio
 
     private final String NEW_DB = "new_slave_node";
     private static final Logger LOGGER = Logger.getLogger(CreateSlaveFromTransactionalBackupAcceptanceTest.class);
+    private String port;
 }

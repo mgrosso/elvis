@@ -27,6 +27,7 @@ import com.netblue.bruce.cluster.DefaultCluster;
 import com.netblue.bruce.cluster.Node;
 import org.apache.commons.lang.builder.EqualsBuilder;
 import org.apache.commons.lang.builder.HashCodeBuilder;
+import org.hibernate.annotations.ForeignKey;
 import org.hibernate.annotations.Index;
 
 import javax.persistence.*;
@@ -241,7 +242,8 @@ class Cluster extends DefaultCluster
     private String name;
 
     @OneToOne(targetEntity = com.netblue.bruce.cluster.persistence.Node.class, fetch = FetchType.EAGER)
-    @JoinColumn( name = "master_node_id", nullable = true, unique = true) 
+    @JoinColumn( name = "master_node_id", nullable = true, unique = true)
+    @ForeignKey(name="master_node_id_fk")
     private com.netblue.bruce.cluster.persistence.Node master;
 
     @ManyToMany(mappedBy = "cluster", targetEntity = com.netblue.bruce.cluster.persistence.Node.class, fetch = FetchType.EAGER)

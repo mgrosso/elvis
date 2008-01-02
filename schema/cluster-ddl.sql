@@ -3,10 +3,10 @@
         drop constraint FKFFDC89D88E4F00C;
 
     alter table bruce.NODE_CLUSTER 
-        drop constraint FKFFDC89D33CF3B28;
+        drop constraint node_id_fk;
 
     alter table bruce.YF_CLUSTER 
-        drop constraint FK6394F2A89F548A4B;
+        drop constraint master_node_id_fk;
 
     drop table bruce.NODE_CLUSTER;
 
@@ -44,14 +44,14 @@
         references bruce.YF_CLUSTER;
 
     alter table bruce.NODE_CLUSTER 
-        add constraint FKFFDC89D33CF3B28 
+        add constraint node_id_fk 
         foreign key (node_id) 
         references bruce.YF_NODE;
 
     create index yf_cluster_name_idx on bruce.YF_CLUSTER (name);
 
     alter table bruce.YF_CLUSTER 
-        add constraint FK6394F2A89F548A4B 
+        add constraint master_node_id_fk 
         foreign key (master_node_id) 
         references bruce.YF_NODE;
 

@@ -28,31 +28,31 @@
             <value>1</value>
             <value>true</value>
             <value>Cluster 0 - Primary master</value>
-            <value>jdbc:postgresql://localhost:5432/bruce?user=bruce&amp;password=bruce</value>
+            <value>jdbc:postgresql://localhost:@DB_PORT@/bruce?user=bruce&amp;password=bruce</value>
         </row>
         <row>
             <value>2</value>
             <value>true</value>
             <value>Cluster 0 - Slave Uno</value>
-            <value>jdbc:postgresql://localhost:5432/bruce?user=bruce&amp;password=bruce</value>
+            <value>jdbc:postgresql://localhost:@DB_PORT@/bruce?user=bruce&amp;password=bruce</value>
         </row>
         <row>
             <value>3</value>
             <value>true</value>
             <value>Cluster 0 - Slave Dos</value>
-            <value>jdbc:postgresql://localhost:5432/bruce?user=bruce&amp;password=bruce</value>
+            <value>jdbc:postgresql://localhost:@DB_PORT@/bruce?user=bruce&amp;password=bruce</value>
         </row>
         <row>
             <value>4</value>
             <value>true</value>
             <value>Cluster 1 - Master</value>
-            <value>jdbc:postgresql://localhost:5432/bruce?user=bruce&amp;password=bruce</value>
+            <value>jdbc:postgresql://localhost:@DB_PORT@/bruce?user=bruce&amp;password=bruce</value>
         </row>
         <row>
             <value>5</value>
             <value>true</value>
             <value>Cluster 1 - Slave Uno</value>
-            <value>jdbc:postgresql://localhost:5432/bruce?user=bruce&amp;password=bruce</value>
+            <value>jdbc:postgresql://localhost:@DB_PORT@/bruce?user=bruce&amp;password=bruce</value>
         </row>
     </table>
     <table name="bruce.yf_cluster">

@@ -66,7 +66,7 @@ public class TestDaemon
         // Now use the admin tool to initialize the configuration database and load the cluster metadata
         Main.main(new String[]{ // Main.main() - how goofy
                 "-url", TestDatabaseHelper.buildUrl("bruce_config"),
-                "-data", "../test/config.xml", 
+                "-data", "../data/config.xml", 
                 "-initsnapshots", "MASTER",
                 "-operation", "CLEAN_INSERT",
                 "-loadschema", "-initnodeschema"

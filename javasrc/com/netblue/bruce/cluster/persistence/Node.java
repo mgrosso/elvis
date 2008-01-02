@@ -26,6 +26,7 @@ import com.netblue.bruce.cluster.Cluster;
 import com.netblue.bruce.cluster.ClusterChangeListener;
 import org.apache.commons.lang.builder.EqualsBuilder;
 import org.apache.commons.lang.builder.HashCodeBuilder;
+import org.hibernate.annotations.ForeignKey;
 
 import javax.persistence.*;
 import java.util.Collection;
@@ -262,6 +263,7 @@ class Node implements com.netblue.bruce.cluster.Node
             joinColumns = {@JoinColumn(name = "node_id")},
             inverseJoinColumns = {@JoinColumn(name = "cluster_id")}
     )
+    @ForeignKey(name="node_id_fk")
     private Set<com.netblue.bruce.cluster.Cluster> cluster = new HashSet<com.netblue.bruce.cluster.Cluster>();
 
     @Column
