@@ -122,6 +122,25 @@ public class TestDatabaseHelper
         }
     }
 
+    public static void applyDDLFromSArray(final Connection connection, final String[] sa) {
+        try {
+            final boolean autoCommit = connection.getAutoCommit();
+            connection.setAutoCommit(true);
+            // Create test schema in the test database
+            Statement s = connection.createStatement();
+            for (String sqlcmd : sa) {
+                try {
+                    executeAndLog(s, sqlcmd);
+                } catch (SQLException e) {
+                    LOGGER.debug("Exception executing SQL", e);
+                }
+            }
+            s.close();
+            connection.setAutoCommit(autoCommit);
+        } catch (SQLException e) {
+            Assert.fail(e.getLocalizedMessage());
+        }
+    }
 
     public static ResultSet executeQueryAndLog(Statement s, String cmd) throws SQLException
     {

@@ -123,7 +123,6 @@
                 format="true"/>
         </hibernatetool>
         <copy file="${dir.schema}/cluster-ddl.sql" todir="${dir.classes}"/>
-        <copy file="${dir.schema}/replication-ddl.sql" todir="${dir.classes}"/>
     </target>
 
     <target name="clean" description="Cleans ${dir.classes}">

@@ -22,6 +22,8 @@
 */
 package com.netblue.bruce;
 
+import com.netblue.bruce.admin.ReplicationDatabaseBuilder;
+import com.netblue.bruce.admin.ConfigurationDatabaseBuilder;
 import org.apache.log4j.Logger;
 import org.dbunit.dataset.IDataSet;
 import org.dbunit.dataset.xml.XmlDataSet;
@@ -45,9 +47,6 @@ import java.sql.SQLException;
  */
 public class ReplicationTest extends DBUnitAbstractInitializer
 {
-
-    public static final File SCHEMA_REPLICATION_DDL_SQL = TestDatabaseHelper.getSchemaFile("replication-ddl.sql");
-    public static final File CLUSTER_CONFIGURATION_DDL_SQL = TestDatabaseHelper.getSchemaFile("cluster-ddl.sql");
 
     /**
      * This is a base class named *Test.java.  JUnit will barf it a test class doesn't contain a test
@@ -122,8 +121,10 @@ public class ReplicationTest extends DBUnitAbstractInitializer
      */
     protected void setUpDatabase(Connection connection)
     {
-        TestDatabaseHelper.applyDDLFromFile(connection, SCHEMA_REPLICATION_DDL_SQL);
-        TestDatabaseHelper.applyDDLFromFile(connection, CLUSTER_CONFIGURATION_DDL_SQL);
+	ReplicationDatabaseBuilder rdb = new ReplicationDatabaseBuilder();
+        TestDatabaseHelper.applyDDLFromSArray(connection, rdb.getSqlStrings());
+	ConfigurationDatabaseBuilder cdb = new ConfigurationDatabaseBuilder();
+        TestDatabaseHelper.applyDDLFromSArray(connection, cdb.getSqlStrings());
     }
 
     private static IDataSet clusterConfigDataSet;

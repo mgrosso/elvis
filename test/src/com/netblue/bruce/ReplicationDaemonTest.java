@@ -22,6 +22,7 @@
 */
 package com.netblue.bruce;
 
+import com.netblue.bruce.admin.ReplicationDatabaseBuilder;
 import com.netblue.bruce.cluster.Cluster;
 import com.netblue.bruce.cluster.ClusterInitializationException;
 import com.netblue.bruce.cluster.Node;
@@ -60,7 +61,8 @@ public class ReplicationDaemonTest extends ReplicationTest
     protected void setUpDatabase(Connection connection)
     {
         super.setUpDatabase(connection);
-        TestDatabaseHelper.applyDDLFromFile(connection, ReplicationTest.SCHEMA_REPLICATION_DDL_SQL);
+	ReplicationDatabaseBuilder rdb = new ReplicationDatabaseBuilder();
+        TestDatabaseHelper.applyDDLFromSArray(connection, rdb.getSqlStrings());
     }
 
     // Setup slavesnapshotstatus if it is not already set up.
