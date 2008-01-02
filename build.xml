@@ -198,6 +198,9 @@
             <fileset dir="build" includes="coverage/**/*"/>
             <fileset dir="docs" includes="javadoc/**/*"/>
         </copy>
+	<copy todir="${dir.release}/junit">
+	  <fileset dir="build/junit-output/html" includes="**/*"/>
+	</copy>
         <copy todir="${dir.package}">
             <fileset dir="." includes="postgres.properties"/>
             <fileset dir="." includes="csrc/**/*"/>
