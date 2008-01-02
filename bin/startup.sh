@@ -7,7 +7,7 @@
 #
 #   JAVA_HOME   Must point to a Java 1.5 environment - either JRE or JDK.
 #
-# $Id: startup.sh 72295 2007-06-22 19:40:46Z lball $
+# $Id$
 # ---------------------------------------------------------------------------
 
 CLUSTER=$1

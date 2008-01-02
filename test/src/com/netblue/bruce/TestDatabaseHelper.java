@@ -46,7 +46,7 @@ import java.util.StringTokenizer;
  * Helper class for tests that deal with the database (which is almost all of them).
  *
  * @author lanceball
- * @version $Id: TestDatabaseHelper.java 72519 2007-06-27 14:24:08Z lball $
+ * @version $Id$
  */
 public class TestDatabaseHelper
 {

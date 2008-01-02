@@ -34,7 +34,7 @@ import java.util.*;
  * to apply in said order.
  *
  * @author rklahn
- * @version $Id: Transaction.java 72519 2007-06-27 14:24:08Z lball $
+ * @version $Id$
  */
 public class Transaction implements SortedSet<Change>, Serializable
 {

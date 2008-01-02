@@ -37,7 +37,7 @@ import java.sql.Statement;
 /**
  * A simple utility class to ease executing groups of database statements from a file.
  * @author lanceball
- * @version $Id: DatabaseBuilder.java 72519 2007-06-27 14:24:08Z lball $
+ * @version $Id$
  */
 public abstract class DatabaseBuilder
 {

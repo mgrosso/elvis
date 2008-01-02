@@ -46,7 +46,7 @@ import java.math.BigInteger;
  * Dont even be tempted to "new Long(xid.toString())". You have been warned.
  *
  * @author rklahn
- * @version $Id: TransactionID.java 72519 2007-06-27 14:24:08Z lball $
+ * @version $Id$
  */
 public class TransactionID implements Comparable, Serializable
 {

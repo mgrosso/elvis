@@ -29,7 +29,7 @@ import java.util.ArrayList;
  * a list of schemas and tables to be replicated.  Implementations of this interface will need
  * to have access to the node's database to query database metadata.
  * @author lanceball
- * @version $Id: ReplicationStrategy.java 72519 2007-06-27 14:24:08Z lball $
+ * @version $Id$
  */
 public interface ReplicationStrategy
 {

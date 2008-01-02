@@ -41,7 +41,7 @@ import java.sql.SQLException;
  * recreates the bruce schema.
  *
  * @author lanceball
- * @version $Id: ReplicationTest.java 72519 2007-06-27 14:24:08Z lball $
+ * @version $Id$
  */
 public class ReplicationTest extends DBUnitAbstractInitializer
 {

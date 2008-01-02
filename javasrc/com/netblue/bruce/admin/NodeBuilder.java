@@ -47,7 +47,7 @@ import java.util.Set;
  * install the appropriate master/slave database triggers on all replicated tables
  *
  * @author lanceball
- * @version $Id: NodeBuilder.java 72519 2007-06-27 14:24:08Z lball $
+ * @version $Id$
  */
 public class NodeBuilder
 {

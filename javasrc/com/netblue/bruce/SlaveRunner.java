@@ -43,7 +43,7 @@ import java.util.HashSet;
  * Responsible for obtaining {@link com.netblue.bruce.Snapshot}s from the <code>SnapshotCache</code>
  *
  * @author lanceball
- * @version $Id: SlaveRunner.java 72519 2007-06-27 14:24:08Z lball $
+ * @version $Id$
  */
 public class SlaveRunner implements Runnable
 {

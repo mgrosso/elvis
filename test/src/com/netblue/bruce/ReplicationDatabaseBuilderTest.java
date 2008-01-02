@@ -39,7 +39,7 @@ import java.sql.SQLException;
  * During setUp, it drops the database and recreates it.
  *
  * @author lanceball
- * @version $Id: ReplicationDatabaseBuilderTest.java 72519 2007-06-27 14:24:08Z lball $
+ * @version $Id$
  */
 public class ReplicationDatabaseBuilderTest extends DBUnitAbstractInitializer
 {

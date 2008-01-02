@@ -33,7 +33,7 @@ import java.io.PrintStream;
 
 /**
  * @author lanceball
- * @version $Id: MainTest.java 72519 2007-06-27 14:24:08Z lball $
+ * @version $Id$
  */
 public class MainTest
 {

@@ -37,7 +37,7 @@ import java.util.regex.Pattern;
  * include and exclude properties as regular expressions.
  *
  * @author lanceball
- * @version $Id: RegExReplicationStrategy.java 72519 2007-06-27 14:24:08Z lball $
+ * @version $Id$
  * @see Node#getIncludeTable() 
  */
 public class RegExReplicationStrategy implements ReplicationStrategy

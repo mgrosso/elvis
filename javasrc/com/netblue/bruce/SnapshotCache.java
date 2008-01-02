@@ -40,7 +40,7 @@ import java.util.concurrent.locks.ReentrantLock;
  * database.
  *
  * @author rklahn
- * @version $Id: $
+ * @version $Id$
  */
 public class SnapshotCache
 {

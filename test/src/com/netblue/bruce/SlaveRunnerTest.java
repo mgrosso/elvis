@@ -42,7 +42,7 @@ import java.util.TreeSet;
 /**
  * Tests the SlaveRunner class
  * @author lanceball
- * @version $Id: SlaveRunnerTest.java 72519 2007-06-27 14:24:08Z lball $
+ * @version $Id$
  */
 public class SlaveRunnerTest extends ReplicationTest
 {

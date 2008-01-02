@@ -40,7 +40,7 @@ import java.util.List;
 /**
  * Tests the {@link com.netblue.bruce.cluster.RegExReplicationStrategy} class
  * @author lanceball
- * @version $Id: RegExReplicationStrategyTest.java 72519 2007-06-27 14:24:08Z lball $
+ * @version $Id$
  */
 public class RegExReplicationStrategyTest extends HibernatePersistenceTest
 {

@@ -31,7 +31,7 @@ import java.io.Serializable;
  * A Change represents a single change to a database row
  *
  * @author rklahn
- * @version $Id: Change.java 72519 2007-06-27 14:24:08Z lball $
+ * @version $Id$
  */
 public class Change implements Comparable, Serializable
 {

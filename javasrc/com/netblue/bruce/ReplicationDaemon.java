@@ -35,7 +35,7 @@ import org.apache.log4j.Logger;
  * <code>Cluster</code> managed by this class are not synchronized.
  *
  * @author lanceball
- * @version $Id: ReplicationDaemon.java 72519 2007-06-27 14:24:08Z lball $
+ * @version $Id$
  */
 public final class ReplicationDaemon implements Runnable
 {

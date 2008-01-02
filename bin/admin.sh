@@ -7,7 +7,7 @@
 #
 #   JAVA_HOME   Must point to a Java 1.5 environment - either JRE or JDK.
 #
-# $Id: admin.sh 69033 2007-05-11 20:03:02Z lball $
+# $Id$
 # ---------------------------------------------------------------------------
 
 ARGS=$*

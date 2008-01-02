@@ -36,7 +36,7 @@ import java.util.*;
  * and will throw NoSuchMethodError if called.
  *
  * @author rklahn
- * @version $Id: $
+ * @version $Id$
  */
 
 public class TidsBetweenSnapshotsSet implements SortedSet<TransactionID> {

@@ -34,7 +34,7 @@ import java.util.Set;
  * Tests that the daemon picks up changes in the cluster configuration on a restart
  *
  * @author lanceball
- * @version $Id: ModifyClusterAcceptanceTest.java 72519 2007-06-27 14:24:08Z lball $
+ * @version $Id$
  */
 public class ModifyClusterAcceptanceTest extends ReplicationTest
 {

@@ -37,7 +37,7 @@ import java.util.Set;
  * Tests the ReplicationDaemon class
  *
  * @author lanceball
- * @version $Id: ReplicationDaemonTest.java 72519 2007-06-27 14:24:08Z lball $
+ * @version $Id$
  */
 public class ReplicationDaemonTest extends ReplicationTest
 {

@@ -27,7 +27,7 @@ import org.kohsuke.args4j.Option;
 /**
  * A simple bean class to handle all of the admin tool options
  * @author lanceball
- * @version $Id: Options.java 72519 2007-06-27 14:24:08Z lball $
+ * @version $Id$
  */
 public class Options
 {

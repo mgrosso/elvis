@@ -31,7 +31,7 @@ import org.junit.Test;
 /**
  * Unit tests for the SlaveFactory class
  * @author lanceball
- * @version $Id: SlaveFactoryTest.java 72519 2007-06-27 14:24:08Z lball $
+ * @version $Id$
  */
 public class SlaveFactoryTest extends ReplicationTest
 {

@@ -36,7 +36,7 @@ import java.util.concurrent.ThreadFactory;
 /**
  * A simple factory class to create <code>Thread</code>s for the slave nodes.
  * @author lanceball  
- * @version $Id: SlaveFactory.java 72519 2007-06-27 14:24:08Z lball $
+ * @version $Id$
  */
 public class SlaveFactory implements ThreadFactory
 {

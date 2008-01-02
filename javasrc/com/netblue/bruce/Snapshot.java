@@ -40,7 +40,7 @@ import java.util.TreeSet;
  * </ul>
  *
  * @author rklahn
- * @version $Id: Snapshot.java 72519 2007-06-27 14:24:08Z lball $
+ * @version $Id$
  */
 public class Snapshot implements Comparable, Serializable
 {

@@ -52,7 +52,7 @@ import java.util.Set;
  * Main class for slave configuration admin tool.
  *
  * @author lanceball
- * @version $Id: Main.java 72519 2007-06-27 14:24:08Z lball $
+ * @version $Id$
  */
 public class Main
 {

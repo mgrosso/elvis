@@ -29,7 +29,7 @@ import java.util.StringTokenizer;
 /**
  * Installs the replication schema
  * @author lanceball
- * @version $Id: ReplicationDatabaseBuilder.java 72519 2007-06-27 14:24:08Z lball $
+ * @version $Id$
  */
 public class ReplicationDatabaseBuilder extends DatabaseBuilder
 {

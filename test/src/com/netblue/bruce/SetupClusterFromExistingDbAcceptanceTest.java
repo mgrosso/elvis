@@ -41,7 +41,7 @@ import java.util.Properties;
  * Tests http://bi02.yfdirect.net:8080/xplanner/do/view/task?oid=1137 and http://bi02.yfdirect.net:8080/xplanner/do/view/task?oid=1294
  *
  * @author lanceball
- * @version $Id: SetupClusterFromExistingDbAcceptanceTest.java 72519 2007-06-27 14:24:08Z lball $
+ * @version $Id$
  */
 public class SetupClusterFromExistingDbAcceptanceTest
 {

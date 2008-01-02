@@ -33,7 +33,7 @@ import java.sql.Statement;
 /**
  * Simple bean class to represent a version number
  * @author lanceball
- * @version $Id: Version.java 72519 2007-06-27 14:24:08Z lball $
+ * @version $Id$
  */
 public class Version
 {

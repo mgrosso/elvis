@@ -32,7 +32,7 @@ import java.util.StringTokenizer;
  * installed, you will lose any data that may have existed in those original tables.  You have been warned.
  *
  * @author lanceball
- * @version $Id: ConfigurationDatabaseBuilder.java 72519 2007-06-27 14:24:08Z lball $
+ * @version $Id$
  */
 public class ConfigurationDatabaseBuilder extends DatabaseBuilder
 {
