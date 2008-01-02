@@ -60,12 +60,13 @@ PG_MODULE_MAGIC;
 #define failure 0
 
 Datum serializeRow(HeapTuple new_row,HeapTuple old_row,TupleDesc desc);
-Datum serializeCol(char *name,Oid type,char *old,char *new);
+Datum serializeCol(char *name,char *type,char *old,char *new);
 char *ConvertDatum2CString(Oid type,Datum d,bool isnull);
 char *deB64(char *s,bool *b);
 char *Datum2CString(Datum d);
 char *currentLogID(void);
 void insertTransactionLog(char *cmd_type,char *schema,char *table,Datum row_data);
+Oid getTypeOid(char *typeName);
 
 PG_FUNCTION_INFO_V1(logTransactionTrigger);
 Datum logTransactionTrigger(PG_FUNCTION_ARGS);
@@ -101,7 +102,7 @@ Datum applyLogTransaction(PG_FUNCTION_ARGS) {
   char query[10240];
   struct colS {
     char *colName;
-    Oid colType;
+    char *colType;
     Oid typInput; /* Needed to convert a string back to the pg internal representation of a type */
     Oid typIOParam; /* Ditto */
     char *oldColS;
@@ -127,10 +128,10 @@ Datum applyLogTransaction(PG_FUNCTION_ARGS) {
   /* Deseralize each column */
   for (i=0;i<numCols;i++) {
     colSs[i].colName=strsep(&cols[i],fieldSep);
-    sscanf(strsep(&cols[i],fieldSep),"%u",&colSs[i].colType);
+    colSs[i].colType=strsep(&cols[i],fieldSep);
     colSs[i].oldColS=deB64(strsep(&cols[i],fieldSep),&colSs[i].oldIsNull);
     colSs[i].newColS=deB64(strsep(&cols[i],fieldSep),&colSs[i].newIsNull);
-    getTypeInputInfo(colSs[i].colType,&colSs[i].typInput,&colSs[i].typIOParam);
+    getTypeInputInfo(getTypeOid(colSs[i].colType),&colSs[i].typInput,&colSs[i].typIOParam);
   }
 
   switch (tTypeS[0]) {
@@ -151,7 +152,7 @@ Datum applyLogTransaction(PG_FUNCTION_ARGS) {
 	  bindParms++;
 	  sprintf(tempS,"%s$%d",values,bindParms);
 	  strcpy(values,tempS);
-	  plan_types[bindParms-1]=colSs[i].colType;
+	  plan_types[bindParms-1]=getTypeOid(colSs[i].colType);
 	  /* Convert string to a Datum of the right type */
 	  plan_values[bindParms-1]=OidFunctionCall3(colSs[i].typInput,
 						    CStringGetDatum(colSs[i].oldColS),
@@ -186,7 +187,7 @@ Datum applyLogTransaction(PG_FUNCTION_ARGS) {
 	  bindParms++;
 	  sprintf(tempS,"%s%s = $%d",whereC,colSs[i].colName,bindParms);
 	  strcpy(whereC,tempS);
-	  plan_types[bindParms-1]=colSs[i].colType;
+	  plan_types[bindParms-1]=getTypeOid(colSs[i].colType);
 	  plan_values[bindParms-1]=OidFunctionCall3(colSs[i].typInput,
 						    CStringGetDatum(colSs[i].oldColS),
 						    ObjectIdGetDatum(colSs[i].typIOParam),
@@ -199,7 +200,7 @@ Datum applyLogTransaction(PG_FUNCTION_ARGS) {
 	  bindParms++;
 	  sprintf(tempS,"%s%s = $%d",query,colSs[i].colName,bindParms);
 	  strcpy(query,tempS);
-	  plan_types[bindParms-1]=colSs[i].colType;
+	  plan_types[bindParms-1]=getTypeOid(colSs[i].colType);
 	  plan_values[bindParms-1]=OidFunctionCall3(colSs[i].typInput,
 						    CStringGetDatum(colSs[i].newColS),
 						    ObjectIdGetDatum(colSs[i].typIOParam),
@@ -230,7 +231,7 @@ Datum applyLogTransaction(PG_FUNCTION_ARGS) {
 	  bindParms++;
 	  sprintf(tempS,"%s%s = $%d",query,colSs[i].colName,bindParms);
 	  strcpy(query,tempS);
-	  plan_types[bindParms-1]=colSs[i].colType;
+	  plan_types[bindParms-1]=getTypeOid(colSs[i].colType);
 	  plan_values[bindParms-1]=OidFunctionCall3(colSs[i].typInput,
 						    CStringGetDatum(colSs[i].oldColS),
 						    ObjectIdGetDatum(colSs[i].typIOParam),
@@ -425,7 +426,7 @@ Datum serializeRow(HeapTuple new_row,HeapTuple old_row,TupleDesc desc) {
     retD=DirectFunctionCall2(textcat,
 			     retD,
 			     serializeCol(SPI_fname(desc,cCol),
-					  SPI_gettypeid(desc,cCol),
+					  SPI_gettype(desc,cCol),
 					  oldCC,
 					  newCC));
     /* Not last col */
@@ -438,18 +439,16 @@ Datum serializeRow(HeapTuple new_row,HeapTuple old_row,TupleDesc desc) {
 }
 
 /* Serialize a single collum */
-Datum serializeCol(char *name,Oid type,char *old,char *new) {
+Datum serializeCol(char *name,char *type,char *old,char *new) {
   Datum retD;
-  char typeC[1024];
 
   retD=DirectFunctionCall1(textin,PointerGetDatum(name));
   retD=DirectFunctionCall2(textcat,
 			   retD,
 			   DirectFunctionCall1(textin,PointerGetDatum(fieldSep)));
-  sprintf(typeC,"%u",type);
   retD=DirectFunctionCall2(textcat,
 			   retD,
-			   DirectFunctionCall1(textin,PointerGetDatum(typeC)));
+			   DirectFunctionCall1(textin,PointerGetDatum(type)));
   retD=DirectFunctionCall2(textcat,
 			   retD,
 			   DirectFunctionCall1(textin,PointerGetDatum(fieldSep)));
@@ -562,4 +561,31 @@ void insertTransactionLog(char *cmd_type,char *schema,char *table,Datum row_data
   
   plan=SPI_prepare(query,2,plan_types);
   SPI_execp(plan,plan_values,NULL,0);
+}
+
+/* Given a type name, obtain the types OID. Safe to assume we are SPI_Connect()ed */
+Oid getTypeOid(char *typeName) {
+  char query[1024];
+  Oid retVal;
+
+  retVal=(Oid) NULL;
+
+  sprintf(query,
+	  "select oid from pg_type where typname = '%s'",
+	  typeName);
+
+  SPI_exec(query,1);
+
+  if (SPI_processed == 1) { 
+    char *oidS;
+    Datum newOidD;
+
+    oidS=SPI_getvalue(SPI_tuptable->vals[0],SPI_tuptable->tupdesc,1);
+    newOidD=DirectFunctionCall1(oidin,CStringGetDatum(oidS));
+    retVal=DatumGetObjectId(DirectFunctionCall1(oidin,CStringGetDatum(oidS)));
+  } else {
+    ereport(ERROR,(errmsg_internal("Type %s does not exist",typeName)));
+  }
+
+  return(retVal);
 }
