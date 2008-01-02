@@ -111,7 +111,7 @@
         </jar>
     </target>
     
-    <target name="release" depends="clean, jar,  docs">
+    <target name="release" depends="clean, jar, test, docs">
         <property name="dir.package" location="${dir.release}/bruce-${bruce.version}"/>
         <mkdir dir="${dir.package}"/>
         <copy todir="${dir.package}">
