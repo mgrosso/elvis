@@ -42,16 +42,9 @@ import java.util.TreeSet;
  * @author rklahn
  * @version $Id$
  */
-public class Snapshot implements Comparable, Serializable
+public class Snapshot implements Comparable
 {
-
     private static final Logger logger = Logger.getLogger(Snapshot.class.getName());
-
-    /**
-     * @serial used to verify that the sender and receiver of a serialized object have loaded classes for that object
-     * that are compatible with respect to serialization.
-     */
-    private static final long serialVersionUID = 2L;
 
     /**
      * @serial <code>TransactionID</code> at the time the snapshot was taken.

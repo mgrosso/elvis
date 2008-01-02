@@ -101,7 +101,7 @@ public final class ReplicationDaemon implements Runnable
         {
             throw new ClusterInitializationException("Cannot run replication daemon without a valid cluster configuration and snapshot cache");
         }
-        logSwitchRunner = new LogSwitchThread(properties, masterDataSource);
+        logSwitchRunner = new LogSwitchThread(properties, masterDataSource, slaveFactory.getCluster());
         logSwitchThread = new Thread(logSwitchRunner,"LogSwitch");
         logSwitchThread.start();
 	generateSnapshotRunner = new GenerateSnapshotThread(properties, masterDataSource);

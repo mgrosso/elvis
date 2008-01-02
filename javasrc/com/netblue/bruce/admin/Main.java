@@ -27,7 +27,7 @@ import com.netblue.bruce.cluster.ClusterFactory;
 import com.netblue.bruce.cluster.Node;
 import com.netblue.bruce.cluster.RegExReplicationStrategy;
 import org.apache.commons.dbcp.BasicDataSource;
-import org.apache.log4j.*;
+import org.apache.log4j.Logger;
 import org.dbunit.DatabaseUnitException;
 import org.dbunit.database.DatabaseConfig;
 import org.dbunit.database.DatabaseDataSourceConnection;
@@ -60,13 +60,6 @@ public class Main
     {
         this.options = options;
 
-        final String logConfig = System.getProperty("log4j.configuration");
-        if (logConfig != null)
-        {
-            PropertyConfigurator.configure(logConfig);
-        }
-
-        LOGGER.setLevel(Level.INFO);
         LOGGER.info("Using database URL: \t" + options.getUrl());
         LOGGER.info("Using database user:\t" + options.getUsername());
         this.dataSource = DatabaseBuilder.makeDataSource(options.getUrl(), options.getUsername(), options.getPassword());
@@ -106,9 +99,6 @@ public class Main
 
     public static void main(String[] args)
     {
-        Appender startupAppender = new ConsoleAppender(new SimpleLayout());
-        BasicConfigurator.configure(startupAppender);
-
         CmdLineParser parser = null;
         try
         {

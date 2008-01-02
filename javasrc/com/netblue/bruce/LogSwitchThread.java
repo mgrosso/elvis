@@ -22,6 +22,7 @@
 */
 package com.netblue.bruce;
 
+import com.netblue.bruce.cluster.Cluster;
 import org.apache.log4j.Logger;
 
 import javax.sql.DataSource;
@@ -45,7 +46,8 @@ public class LogSwitchThread implements Runnable
 
     private static final String THREAD_ITERATION_DELAY_KEY = "bruce.logSwitchDelay";
     private static final int THREAD_ITERATION_DELAY_DEFAULT = 60000;
-    // Table containing row per transaction/schema log table
+    // Base name of Table containing row per transaction/schema log table
+    // Actual table name is <base>_<cluster_id>
     private static final String CURRENT_LOG_KEY = "bruce.currentLogTableName";
     private static final String CURRENT_LOG_DEFAULT = "bruce.currentlog";
     // Name of transaction log view. Names of tables are <viewname>_<number>
@@ -57,7 +59,8 @@ public class LogSwitchThread implements Runnable
 
     private final int rotateFrequency;
     private final int retainFrequency;
-    private final DataSource masterDS;
+    private final DataSource ds;
+    private final Long clusterId;
     private final String currentLogTableName;
     private final String transactionViewName;
     private final String snapshotViewName;
@@ -70,7 +73,7 @@ public class LogSwitchThread implements Runnable
         Connection conn = null;
         try
         {
-            conn = masterDS.getConnection();
+            conn = ds.getConnection();
             conn.setAutoCommit(false);
         }
         catch (SQLException e)
@@ -115,17 +118,25 @@ public class LogSwitchThread implements Runnable
         logger.info("Shutting down log switch thread.");
     }
 
-    public LogSwitchThread(BruceProperties p, DataSource ds)
-    {
-        masterDS = ds;
+    // Entry point for tests at a lower level than where a Cluster exists.
+    // Should not be used directly by Daemon or Admin code
+    public LogSwitchThread(BruceProperties p, DataSource ds, Long id) {
+	this.clusterId=id;
+        this.ds = ds;
         rotateFrequency = p.getIntProperty(ROTATE_KEY, ROTATE_DEFAULT);
         logger.debug("rotateFrequency: " + rotateFrequency);
         retainFrequency = p.getIntProperty(RETAIN_KEY, RETAIN_DEFAULT);
         logger.debug("retainFrequency: " + retainFrequency);
-        currentLogTableName = p.getProperty(CURRENT_LOG_KEY, CURRENT_LOG_DEFAULT);
-        transactionViewName = p.getProperty(TRANSACTION_VIEW_NAME_KEY, TRANSACTION_VIEW_NAME_DEFAULT);
-        snapshotViewName = p.getProperty(SNAPSHOT_VIEW_NAME_KEY, SNAPSHOT_VIEW_NAME_DEFAULT);
+        currentLogTableName = p.getProperty(CURRENT_LOG_KEY, CURRENT_LOG_DEFAULT)+"_"+id.toString();
+        transactionViewName = 
+	    p.getProperty(TRANSACTION_VIEW_NAME_KEY, TRANSACTION_VIEW_NAME_DEFAULT)+"_"+id.toString();
+        snapshotViewName = p.getProperty(SNAPSHOT_VIEW_NAME_KEY, SNAPSHOT_VIEW_NAME_DEFAULT)+"_"+id.toString();
         threadDelay = p.getIntProperty(THREAD_ITERATION_DELAY_KEY, THREAD_ITERATION_DELAY_DEFAULT);
+    }
+
+    public LogSwitchThread(BruceProperties p, DataSource ds, Cluster cl)
+    {
+	this(p,ds,cl.getId());
     }
 
     // If the rotate time has passed for the latest transaction/snapshot logs, create new tables and

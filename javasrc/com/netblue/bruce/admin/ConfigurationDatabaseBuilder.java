@@ -34,8 +34,6 @@ import org.apache.log4j.Logger;
  */
 public class ConfigurationDatabaseBuilder extends DatabaseBuilder
 {
-
-
     /**
      * Reads a text file, splitting it into SQL statements (delimited by ';').
      *

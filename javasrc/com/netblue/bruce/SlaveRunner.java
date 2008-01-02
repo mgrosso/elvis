@@ -55,16 +55,8 @@ public class SlaveRunner implements Runnable
         this.masterDataSource = masterDataSource;
         properties = new BruceProperties();
 
-        // Get our query strings
-        selectLastSnapshotQuery = properties.getProperty(SNAPSHOT_STATUS_SELECT_KEY, SNAPSHOT_STATUS_SELECT_DEFAULT);
-        updateLastSnapshotQuery = properties.getProperty(SNAPSHOT_STATUS_UPDATE_KEY, SNAPSHOT_STATUS_UPDATE_DEFAULT);
-        slaveTransactionIdQuery = properties.getProperty(SLAVE_UPDATE_TRANSACTION_ID_KEY, SLAVE_UPDATE_TRANSACTION_ID_DEFAULT);
-        applyTransactionsQuery = properties.getProperty(APPLY_TRANSACTION_KEY, APPLY_TRANSACTION_DEFAULT);
-        daemonModeQuery = properties.getProperty(DAEMONMODE_QUERY_ID_KEY, DAEMONMODE_QUERY_ID_DEFAULT);
-        normalModeQuery = properties.getProperty(NORMALMODE_QUERY_ID_KEY, NORMALMODE_QUERY_ID_DEFAULT);
-	slaveTableIDQuery = properties.getProperty(SLAVE_TABLE_ID_KEY,SLAVE_TABLE_ID_DEFAULT);
-        sleepTime = properties.getIntProperty(NEXT_SNAPSHOT_UNAVAILABLE_SLEEP_KEY, NEXT_SNAPSHOT_UNAVAILABLE_SLEEP_DEFAULT);
-
+	sleepTime = 
+	    properties.getIntProperty(NEXT_SNAPSHOT_UNAVAILABLE_SLEEP_KEY, NEXT_SNAPSHOT_UNAVAILABLE_SLEEP_DEFAULT);
         // Setup our data source
         dataSource.setDriverClassName(properties.getProperty("bruce.jdbcDriverName", "org.postgresql.Driver"));
         dataSource.setValidationQuery(properties.getProperty("bruce.poolQuery", "select now()"));
@@ -328,8 +320,7 @@ public class SlaveRunner implements Runnable
 	    try { // prevent connection pool leakage
 		masterC.setAutoCommit(false);
 		PreparedStatement masterPS = 
-		    masterC.prepareStatement(properties.getProperty(GET_OUTSTANDING_TRANSACTIONS_KEY,
-								    GET_OUTSTANDING_TRANSACTIONS_DEFAULT));
+		    masterC.prepareStatement(format(getOutstandingTransactionsQuery,cluster.getId().toString()));
 		masterPS.setFetchSize(50);
 		masterPS.setLong(1,lastProcessedSnapshot.getMinXid().getLong());
 		masterPS.setLong(2,snapshot.getMaxXid().getLong());
@@ -379,9 +370,11 @@ public class SlaveRunner implements Runnable
      * Gets the next snapshot from the master database. Will return null if no next snapshot
      * available.
      *
+     * Public so we can test this method from junit. Otherwise, probably could be private.
+     *
      * @return the next Snapshot when it becomes available
      */
-    private Snapshot getNextSnapshot()
+    public Snapshot getNextSnapshot()
     {
         LOGGER.trace("Getting next snapshot");
 	Snapshot retVal = null;
@@ -405,8 +398,7 @@ public class SlaveRunner implements Runnable
 		    // Two cases here. One, where the nextNormalID is less than lastNormalXID, and,
 		    // thus, a simple less than or equals test can be used
 		    LOGGER.trace("simple case");
-		    ps = c.prepareStatement(properties.getProperty(NEXT_SNAPSHOT_SIMPLE_KEY,
-								   NEXT_SNAPSHOT_SIMPLE_DEFAULT));
+		    ps = c.prepareStatement(format(nextSnapshotSimpleQuery,cluster.getId().toString()));
 		    ps.setLong(1, TransactionID.INVALID);
 		    ps.setLong(2, TransactionID.BOOTSTRAP);
 		    ps.setLong(3, TransactionID.FROZEN);
@@ -417,8 +409,7 @@ public class SlaveRunner implements Runnable
 		    // when the lastNormalXID has wrapped around 2^32. The test here is a little more
 		    // complex, we are looking for snapshots either >=nextNormalXID or <=lastNormalXID
 		    LOGGER.trace("wraparound case");
-		    ps =c.prepareStatement(properties.getProperty(NEXT_SNAPSHOT_WRAPAROUND_KEY,
-								  NEXT_SNAPSHOT_WRAPAROUND_DEFAULT));
+		    ps = c.prepareStatement(format(nextSnapshotWraparoundQuery,cluster.getId().toString()));
 		    ps.setLong(1, TransactionID.INVALID);
 		    ps.setLong(2, TransactionID.BOOTSTRAP);
 		    ps.setLong(3, TransactionID.FROZEN);
@@ -517,85 +508,52 @@ public class SlaveRunner implements Runnable
     private final int sleepTime;
     private final Node node;
     private final Cluster cluster;
-    private final String selectLastSnapshotQuery;
-    private final String updateLastSnapshotQuery;
-    private final String slaveTransactionIdQuery;
-    private final String applyTransactionsQuery;
-    private final String daemonModeQuery;
-    private final String normalModeQuery;
-    private final String slaveTableIDQuery;
     private final DataSource masterDataSource;
     private final BasicDataSource dataSource = new BasicDataSource();
 
     // --------- Static Constants ------------ //
     private static final Logger LOGGER = Logger.getLogger(SlaveRunner.class);
-
-    // Daemon mode for inserting data into the slave's replicated tables
-    private static final String DAEMONMODE_QUERY_ID_KEY = "bruce.daemonmode.query";
-    private static final String DAEMONMODE_QUERY_ID_DEFAULT = "select bruce.daemonmode()";
-
-    // Normal mode to keep replicated tables read only
-    private static final String NORMALMODE_QUERY_ID_KEY = "bruce.normalmode.query";
-    private static final String NORMALMODE_QUERY_ID_DEFAULT = "select bruce.normalmode()";
-
-    // Apply transactions to a slave
-    private static final String APPLY_TRANSACTION_KEY = "bruce.applytransaction.query";
-    private static final String APPLY_TRANSACTION_DEFAULT = "select bruce.applyLogTransaction(?, ?, ?)";
-
-    // Query the status table
-    private static final String SNAPSHOT_STATUS_SELECT_KEY = "bruce.slave.query";
-    private static final String SNAPSHOT_STATUS_SELECT_DEFAULT = new StringBuilder()
-            .append("select * from bruce.slavesnapshotstatus ")
-            .append("where clusterid = ?").toString();
-
-    // Update existing record in status table
-    private static final String SNAPSHOT_STATUS_UPDATE_KEY = "bruce.slave.updatestatus";
-    private static final String SNAPSHOT_STATUS_UPDATE_DEFAULT = new StringBuilder()
-            .append("update bruce.slavesnapshotstatus ")
-            .append("set slave_xaction = ?,  master_current_xaction = ?, master_min_xaction = ?, master_max_xaction = ?, ")
-            .append("master_outstanding_xactions = ?, update_time = now() where clusterid = ?").toString();
-
-    // Get transaction ID for slave update transaction
-    private static final String SLAVE_UPDATE_TRANSACTION_ID_KEY = "bruce.slave.select.transactionid";
-    private static final String SLAVE_UPDATE_TRANSACTION_ID_DEFAULT = new StringBuilder()
-            .append("select * from pg_locks where pid = pg_backend_pid()")
-            .append(" and locktype = 'transactionid'").toString();
-
-    // Query to determine tables that have Slave trigger
-    private static final String SLAVE_TABLE_ID_KEY = "bruce.slave.hasSlaveTrigger";
-    private static final String SLAVE_TABLE_ID_DEFAULT = 
-	"select n.nspname||'.'||c.relname as tablename from pg_class c, pg_namespace n "+
-	" where c.relnamespace = n.oid "+
-	"   and c.oid in (select tgrelid from pg_trigger "+
-	"                  where tgfoid = (select oid from pg_proc "+
-	"                                   where proname = 'denyaccesstrigger' "+
-	"                                     and pronamespace = (select oid from pg_namespace "+
-	"                                                          where nspname = 'bruce')))";
-
-    // Query to determine the next snapshot, when nextNormalXID < lastNormalXID
-    private static final String NEXT_SNAPSHOT_SIMPLE_KEY = "bruce.slave.nextSnapshotSimple";
-    private static final String NEXT_SNAPSHOT_SIMPLE_DEFAULT =
-	"select * from bruce.snapshotlog "+
+    private static final String selectLastSnapshotQuery =
+	"select * from bruce.slavesnapshotstatus where clusterid = ?";
+    private static final String updateLastSnapshotQuery =
+	"update bruce.slavesnapshotstatus "+
+	"   set slave_xaction = ?,  master_current_xaction = ?, master_min_xaction = ?, master_max_xaction = ?, "+
+	"       master_outstanding_xactions = ?, update_time = now() "+
+	" where clusterid = ?";
+    private static final String slaveTransactionIdQuery =
+	"select * from pg_locks where pid = pg_backend_pid() and locktype = 'transactionid'";
+    private static final String applyTransactionsQuery = 
+	"select bruce.applyLogTransaction(?, ?, ?)";
+    private static final String daemonModeQuery =
+	"select bruce.daemonmode()";
+    private static final String normalModeQuery = 
+	"select bruce.normalmode()";
+    private static final String slaveTableIDQuery = 
+       "select n.nspname||'.'||c.relname as tablename from pg_class c, pg_namespace n "+
+       " where c.relnamespace = n.oid "+
+       "   and c.oid in (select tgrelid from pg_trigger "+
+       "                  where tgfoid = (select oid from pg_proc "+
+       "                                   where proname = 'denyaccesstrigger' "+
+       "                                     and pronamespace = (select oid from pg_namespace "+
+       "                                                          where nspname = 'bruce')))";
+    // Input for MessageFormat.format()
+    private static final String nextSnapshotSimpleQuery =
+	"select * from bruce.snapshotlog_{0} "+
 	" where current_xaction not in (?,?,?) "+
 	"   and current_xaction >= ? "+
 	"   and current_xaction <= ? "+
 	" order by current_xaction desc limit 1";
-
-    // Query to determine the next snapshot, when nextNormalXID > lastNormalXID
-    private static final String NEXT_SNAPSHOT_WRAPAROUND_KEY = 
-	"bruce.slave.nextSnapshotWraparound";
-    private static final String NEXT_SNAPSHOT_WRAPAROUND_DEFAULT =
-	"select * from bruce.snapshotlog "+
+    // Input for MessageFormat.format()
+    private static final String nextSnapshotWraparoundQuery =
+	"select * from bruce.snapshotlog_{0} "+
 	" where current_xaction not in (?,?,?) "+
 	"   and ((current_xaction >= ? and current_xaction <= ?) "+
 	"     or (current_xaction >= ? and current_xaction <= ?)) "+
 	" order by current_xaction desc limit 1";
-
-    private static final String GET_OUTSTANDING_TRANSACTIONS_KEY =
-	"bruce.slave.getOutstandingTransactions";
-    private static final String GET_OUTSTANDING_TRANSACTIONS_DEFAULT =
-	"select * from bruce.transactionlog where xaction >= ? and xaction < ? order by rowid asc";
-
+    // Input for MessageFormat.format()
+    private static final String getOutstandingTransactionsQuery =
+	"select * from bruce.transactionlog_{0} where xaction >= ? and xaction < ? order by rowid asc";
+	
     // How long to wait if a 'next' snapshot is unavailable, in miliseconds
     private static final String NEXT_SNAPSHOT_UNAVAILABLE_SLEEP_KEY = "bruce.nextSnapshotUnavailableSleep";
     // This default value may need some tuning. 100ms seemed too small, 1s might be right

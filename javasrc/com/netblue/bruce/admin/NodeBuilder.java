@@ -78,7 +78,7 @@ public class NodeBuilder
                     final Node master = cluster.getMaster();
                     if (master.equals(node))
                     {
-                        prepareMaster(master);
+                        prepareMaster(cluster);
                         isSlave = false;
                     }
                 }
@@ -179,14 +179,40 @@ public class NodeBuilder
     }
 
 
-    private void prepareMaster(final Node master) throws IOException, SQLException
+    private void prepareMaster(final Cluster cluster) throws IOException, SQLException
     {
+	Node master = cluster.getMaster();
         DataSource dataSource = prepareDatabase(master);
 
         RegExReplicationStrategy strategy = new RegExReplicationStrategy(dataSource);
         Connection connection = dataSource.getConnection();
         ArrayList<String> tables = strategy.getTables(master, null);
         Statement statement = connection.createStatement();
+	// Populate Master Node table with this clusters ID
+	try {
+	    statement.execute("drop table bruce.masternode cascade");
+	} catch (SQLException e) {} // OK if table does not already exist
+	statement.execute("create table bruce.masternode (cluster_id int8 not null primary key)");
+	statement.execute("insert into bruce.masternode(cluster_id) values ("+cluster.getId().toString()+")");
+	statement.execute("grant select on bruce.masternode to public");
+	// Create a currentlog table for this cluster
+	String clusterIdS = cluster.getId().toString();
+	try {
+	    statement.execute("drop table bruce.currentlog_"+clusterIdS+" cascade");
+	    statement.execute("drop sequence bruce.currentlog_"+clusterIdS+"_id_seq cascade");
+	    statement.execute("drop sequence bruce.transactionlog_"+clusterIdS+"_rowseq cascade");
+	} catch (SQLException e) {} // OK if table does not already exist
+	statement.execute("CREATE SEQUENCE bruce.currentlog_"+clusterIdS+"_id_seq "+
+			  "      INCREMENT BY 1 NO MAXVALUE NO MINVALUE START WITH 1 CACHE 1");
+	statement.execute("CREATE SEQUENCE bruce.transactionlog_"+clusterIdS+"_rowseq "+
+			  "      INCREMENT BY 1 NO MAXVALUE NO MINVALUE START WITH 1 CACHE 1");
+	statement.execute("grant all on bruce.transactionlog_"+clusterIdS+"_rowseq to public");
+	statement.execute("CREATE TABLE bruce.currentlog_"+clusterIdS+
+			  "           ( id integer "+
+			  "                DEFAULT nextval('bruce.currentlog_"+clusterIdS+"_id_seq'::regclass) "+
+			  "                NOT NULL primary key, "+
+			  "             create_time timestamp without time zone DEFAULT now() NOT NULL)");
+	statement.execute("GRANT select ON bruce.currentlog_"+clusterIdS+" TO public");
         for (String table : tables)
         {
             // Trigger names can't be prefixed with a schema.  Let's get just the tableName
@@ -202,26 +228,29 @@ public class NodeBuilder
 
         // Now check to see if we have any data in the snapshot view.  If not, create a row
 	// First, make sure at least one snapshot/transaction log exists
-	LogSwitchThread lst = new LogSwitchThread(new BruceProperties(),dataSource);
+	// Make sure we have at least one snapshot/transaction log
+	LogSwitchThread lst = new LogSwitchThread(new BruceProperties(),dataSource,cluster);
 	lst.newLogTable(statement);
-        ResultSet resultSet = statement.executeQuery("select count(*) from bruce.snapshotlog");
-        if (resultSet.next())
-        {
-            int count = resultSet.getInt(1);
-            if (count == 0)
-            {
-                statement.execute("select bruce.logsnapshot()");
-            }
-        }
+	// Make sure that we have at least one snapshot, so that this DB can safely be used as the data source
+	// of other nodes.
+	statement.execute("select bruce.logsnapshot()");
         statement.close();
         connection.close();
     }
 
     private Snapshot selectLastSnapshot(final Statement statement) throws SQLException
     {
-        // Now get the last snapshot and return it
-        final ResultSet resultSet = statement.executeQuery("select * from bruce.snapshotlog order by current_xaction desc limit 1");
         Snapshot snapshot = null;
+        // Now get the last snapshot and return it
+	// First we need to know what the clusterID is.
+	ResultSet resultSet = statement.executeQuery("select cluster_id from masternode limit 1");
+	Long clusterId = null;
+	if (resultSet.next()) {
+	    clusterId=resultSet.getLong("cluster_id");
+	} 
+	// Then we can build the query to get the snapshot
+        resultSet = statement.executeQuery("select * from bruce.snapshotlog_"+clusterId.toString()+
+					   " order by current_xaction desc limit 1");
         if (resultSet.next())
         {
             snapshot = new Snapshot(new TransactionID(resultSet.getLong("current_xaction")),

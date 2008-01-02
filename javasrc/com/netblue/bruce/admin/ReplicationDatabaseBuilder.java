@@ -41,71 +41,62 @@ public class ReplicationDatabaseBuilder extends DatabaseBuilder
     }
 
     private static final Logger logger = Logger.getLogger(ReplicationDatabaseBuilder.class);
-    private static final String[] replicationDDL = 
-	{"DROP SCHEMA bruce cascade",
-	 "CREATE SCHEMA bruce",
-	 "GRANT usage ON SCHEMA bruce TO public",
-	 "CREATE TABLE bruce.replication_version "+
-	 "           ( major int, "+
-	 "             minor int, "+
-	 "             patch int, "+
-	 "             name character(64))",
-	 "INSERT INTO bruce.replication_version VALUES (1, 0, 0, 'Replication 1.0 release')",
-	 "CREATE FUNCTION bruce.applylogtransaction(text, text, text) RETURNS boolean "+
-	 "             AS 'bruce.so', 'applyLogTransaction' LANGUAGE c",
-	 "CREATE FUNCTION bruce.daemonmode() RETURNS integer "+
-	 "             AS 'bruce.so', 'daemonMode' LANGUAGE c",
-	 "CREATE FUNCTION bruce.denyaccesstrigger() RETURNS trigger "+
-	 "             AS 'bruce.so', 'denyAccessTrigger' LANGUAGE c",
-	 "CREATE FUNCTION bruce.logsnapshottrigger() RETURNS trigger "+
-	 "             AS 'bruce.so', 'logSnapshot' LANGUAGE c",
-	 "CREATE FUNCTION bruce.logsnapshot() RETURNS boolean "+
-	 "             AS 'bruce.so', 'logSnapshot' LANGUAGE c",
-	 "CREATE FUNCTION bruce.logtransactiontrigger() RETURNS trigger "+
-	 "             AS 'bruce.so', 'logTransactionTrigger' LANGUAGE c",
-	 "CREATE FUNCTION bruce.normalmode() RETURNS integer "+
-	 "             AS 'bruce.so', 'normalMode' LANGUAGE c",
-	 "CREATE FUNCTION bruce.getslaves () RETURNS SETOF VARCHAR AS "+
-	 "'"+
-	 "     select n.nspname||''.''||c.relname as tablename from pg_class c, pg_namespace n "+
-	 "      where c.relnamespace = n.oid "+
-	 "        and c.oid in (select tgrelid from pg_trigger "+
-	 "                       where tgfoid = (select oid from pg_proc "+
-	 "                                        where proname = ''denyaccesstrigger'' "+
-	 "                                          and pronamespace = "+
-	 "                                              (select oid from pg_namespace "+
-	 "                                                where nspname = ''bruce''))) "+
-	 "     order by 1; "+
-	 "' "+
-	 "LANGUAGE SQL",
-	 "CREATE FUNCTION bruce.getmasters () RETURNS SETOF VARCHAR AS "+
-	 "'"+
-	 "     select n.nspname||''.''||c.relname as tablename from pg_class c, pg_namespace n "+
-	 "      where c.relnamespace = n.oid "+
-	 "        and c.oid in (select tgrelid from pg_trigger "+
-	 "                       where tgfoid = (select oid from pg_proc "+
-	 "                                        where proname = ''logtransactiontrigger'' "+
-	 "                                          and pronamespace = "+
-	 "                                                (select oid from pg_namespace "+
-	 "                                                  where nspname = ''bruce''))) "+
-	 "     order by 1; "+
-	 "' "+
-	 "LANGUAGE SQL",
-	 "CREATE SEQUENCE bruce.currentlog_id_seq INCREMENT BY 1 NO MAXVALUE MINVALUE 0 START WITH 0 CACHE 1",
-	 "CREATE SEQUENCE bruce.transactionlog_rowseq "+
-	 "      INCREMENT BY 1 NO MAXVALUE NO MINVALUE CACHE 1",
-	 "GRANT ALL ON bruce.transactionlog_rowseq TO public",
-	 "CREATE TABLE bruce.currentlog "+
-	 "           ( id integer DEFAULT nextval('bruce.currentlog_id_seq'::regclass) "+
-	 "                        NOT NULL primary key, "+
-	 "             create_time timestamp without time zone DEFAULT now() NOT NULL)",
-	 "GRANT select ON bruce.currentlog TO public",
-	 "CREATE TABLE bruce.slavesnapshotstatus "+
-	 "           ( clusterid bigint NOT NULL primary key, "+
-	 "             slave_xaction bigint NOT NULL, "+
-	 "             master_current_xaction bigint NOT NULL, "+
-	 "             master_min_xaction bigint NOT NULL, "+
-	 "             master_max_xaction bigint NOT NULL, "+
-	 "             master_outstanding_xactions text, "+
-	 "             update_time timestamp without time zone default now() NOT NULL)"};
+    private static final String[] replicationDDL = {
+	//"DROP SCHEMA bruce cascade",
+	// "CREATE SCHEMA bruce",
+	//"GRANT usage ON SCHEMA bruce TO public",
+	"CREATE TABLE bruce.replication_version "+
+	"           ( major int, "+
+	"             minor int, "+
+	"             patch int, "+
+	"             name character(64))",
+	"INSERT INTO bruce.replication_version VALUES (1, 0, 0, 'Replication 1.0 release')",
+	"CREATE FUNCTION bruce.applylogtransaction(text, text, text) RETURNS boolean "+
+	"             AS 'bruce.so', 'applyLogTransaction' LANGUAGE c",
+	"CREATE FUNCTION bruce.daemonmode() RETURNS integer "+
+	"             AS 'bruce.so', 'daemonMode' LANGUAGE c",
+	"CREATE FUNCTION bruce.denyaccesstrigger() RETURNS trigger "+
+	"             AS 'bruce.so', 'denyAccessTrigger' LANGUAGE c",
+	"CREATE FUNCTION bruce.logsnapshottrigger() RETURNS trigger "+
+	"             AS 'bruce.so', 'logSnapshot' LANGUAGE c",
+	"CREATE FUNCTION bruce.logsnapshot() RETURNS boolean "+
+	"             AS 'bruce.so', 'logSnapshot' LANGUAGE c",
+	"CREATE FUNCTION bruce.logtransactiontrigger() RETURNS trigger "+
+	"             AS 'bruce.so', 'logTransactionTrigger' LANGUAGE c",
+	"CREATE FUNCTION bruce.normalmode() RETURNS integer "+
+	"             AS 'bruce.so', 'normalMode' LANGUAGE c",
+	"CREATE FUNCTION bruce.getslaves () RETURNS SETOF VARCHAR AS "+
+	"'"+
+	"     select n.nspname||''.''||c.relname as tablename from pg_class c, pg_namespace n "+
+	"      where c.relnamespace = n.oid "+
+	"        and c.oid in (select tgrelid from pg_trigger "+
+	"                       where tgfoid = (select oid from pg_proc "+
+	"                                        where proname = ''denyaccesstrigger'' "+
+	"                                          and pronamespace = "+
+	"                                              (select oid from pg_namespace "+
+	"                                                where nspname = ''bruce''))) "+
+	"     order by 1; "+
+	"' "+
+	"LANGUAGE SQL",
+	"CREATE FUNCTION bruce.getmasters () RETURNS SETOF VARCHAR AS "+
+	"'"+
+	"     select n.nspname||''.''||c.relname as tablename from pg_class c, pg_namespace n "+
+	"      where c.relnamespace = n.oid "+
+	"        and c.oid in (select tgrelid from pg_trigger "+
+	"                       where tgfoid = (select oid from pg_proc "+
+	"                                        where proname = ''logtransactiontrigger'' "+
+	"                                          and pronamespace = "+
+	"                                                (select oid from pg_namespace "+
+	"                                                  where nspname = ''bruce''))) "+
+	"     order by 1; "+
+	"' "+
+	"LANGUAGE SQL",
+	"CREATE TABLE bruce.slavesnapshotstatus "+
+	"           ( clusterid bigint NOT NULL primary key, "+
+	"             slave_xaction bigint NOT NULL, "+
+	"             master_current_xaction bigint NOT NULL, "+
+	"             master_min_xaction bigint NOT NULL, "+
+	"             master_max_xaction bigint NOT NULL, "+
+	"             master_outstanding_xactions text, "+
+	"             update_time timestamp without time zone default now() NOT NULL)"};
 }
