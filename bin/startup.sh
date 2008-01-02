@@ -48,7 +48,7 @@ PRGDIR=`dirname "$PRG"`
 cd $PRGDIR
 PRGPATH=`pwd`
 
-BRUCE_OPTS="-Dcom.sun.management.jmxremote -Dcom.sun.management.jmxremote.port=9999 -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false -Dpid.file=${PID_FILE} -Dlog4j.configuration=${PRGPATH}/log4j.properties -Dpostgresql.db_name=${POSTGRESQL_DB_NAME} -Dpostgresql.URL=${POSTGRESQL_URL} -Dhibernate.connection.url=${POSTGRESQL_URL} -Dhibernate.connection.username=${USER} -Dhibernate.dialect=org.hibernate.dialect.PostgreSQLDialect"
+BRUCE_OPTS="-Dcom.sun.management.jmxremote -Dcom.sun.management.jmxremote.port=9999 -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.ssl=false -Dpid.file=${PID_FILE} -Dlog4j.configuration=file://${PRGPATH}/log4j.properties -Dpostgresql.db_name=${POSTGRESQL_DB_NAME} -Dpostgresql.URL=${POSTGRESQL_URL} -Dhibernate.connection.url=${POSTGRESQL_URL} -Dhibernate.connection.username=${USER} -Dhibernate.dialect=org.hibernate.dialect.PostgreSQLDialect"
 
  # Be sure we have a JAVA_HOME set - default to /usr/local/java
 [ -z "$JAVA_HOME" ] && JAVA_HOME=/usr/local/java

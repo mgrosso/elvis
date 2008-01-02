@@ -108,7 +108,6 @@
 
 <!-- 12345678911234567892123456789312345678904123456789512345678961234567897123456789812345678991234567891 -->
 
-
     <target name="schemaexport" depends="compile, make-hibernate-config">
         <echo message="Using PostgreSQL URL: ${postgresql.URL}"/>
         <property name="hibernate.connection.url" value="${postgresql.URL}"/>
@@ -153,7 +152,6 @@
     <!-- Jar package                                     -->
     <!-- =============================================== -->
     <target name="jar" description="makes jar" depends="compile, compile-test, make-hibernate-config">
-        <antcall target="schemaexport"/>
         <mkdir dir="${dir.release}"/>
         <jar destfile="${dir.release}/${jarfilename}" basedir="${dir.classes}">
             <manifest>
@@ -290,9 +288,7 @@
             depends="jar, compile-test, make-test-data"
             description="overrides the generic test target">
 
-        <!-- Load the test schema and setup system properties for test data -->
-        <echo message="Loading test schema"/>
-        <antcall target="schemaexport"/>
+        <!-- Setup system properties for test data -->
         <mkdir dir="${dir.junit.output}/xml"/>
         <property name="dir.test.data" location="test/data"/>
         <property name="dir.schema" location="schema"/>

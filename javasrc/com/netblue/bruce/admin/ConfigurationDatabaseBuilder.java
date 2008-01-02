@@ -22,9 +22,7 @@
 */
 package com.netblue.bruce.admin;
 
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.StringTokenizer;
+import org.apache.log4j.Logger;
 
 /**
  * Installs the configuration schema on a database via a user-supplied <code>BasicDataSource</code>. WARNING:  This
@@ -43,26 +41,33 @@ public class ConfigurationDatabaseBuilder extends DatabaseBuilder
      *
      * @return an array of sql statements
      */
-    public String[] getSqlStrings()
-    {
-        ArrayList<String> statements = new ArrayList<String>();
-        statements.add("create schema bruce;"); // hibernate won't create the schema for us
-
-        try
-        {
-            // schema ddl is in a .sql file at the root of bruce.jar
-            final String ddlString = readFileResource("cluster-ddl.sql").toString();
-            final StringTokenizer tokenizer = new StringTokenizer(ddlString, DDL_DELIMITER);
-            while (tokenizer.hasMoreTokens())
-            {
-                statements.add(tokenizer.nextToken());
-            }
-        }
-        catch (IOException e)
-        {
-            LOGGER.error("Cannot load SQL strings", e);
-        }
-        return statements.toArray(new String[statements.size()]);
+    public String[] getSqlStrings() {
+	return configurationDDL;
     }
 
+    private static final Logger logger = Logger.getLogger(ConfigurationDatabaseBuilder.class);
+    private static final String[] configurationDDL = {
+	"create schema bruce", // If not already present
+	"alter table bruce.NODE_CLUSTER drop constraint cluster_id_fk",
+	"alter table bruce.NODE_CLUSTER drop constraint node_id_fk",
+	"alter table bruce.YF_CLUSTER drop constraint master_node_id_fk",
+	"drop sequence bruce.hibernate_sequence",
+	"drop table bruce.NODE_CLUSTER",
+	"drop table bruce.YF_CLUSTER",
+	"drop table bruce.YF_NODE",
+	"create table bruce.NODE_CLUSTER ( node_id int8 not null, cluster_id int8 not null, primary key (node_id, cluster_id))",
+	"create table bruce.YF_CLUSTER ( id int8 not null, name text, master_node_id int8 unique, primary key (id))",
+	"create table bruce.YF_NODE "+
+	"           ( id int8 not null, "+
+	"             available bool, "+
+	"             includeTable text, "+
+	"             name text not null, "+
+	"             uri text not null, "+
+	"             primary key (id))",
+	"alter table bruce.NODE_CLUSTER add constraint cluster_id_fk foreign key (cluster_id) references bruce.YF_CLUSTER",
+	"alter table bruce.NODE_CLUSTER add constraint node_id_fk foreign key (node_id) references bruce.YF_NODE",
+	"create index yf_cluster_name_idx on bruce.YF_CLUSTER (name)",
+	"alter table bruce.YF_CLUSTER add constraint master_node_id_fk foreign key (master_node_id) references bruce.YF_NODE",
+	"create sequence bruce.hibernate_sequence"
+    };
 }
