@@ -155,8 +155,6 @@
     <!-- =============================================== -->
     <target name="jar" description="makes jar" depends="compile, compile-test, make-hibernate-config">
         <mkdir dir="${dir.release}"/>
-        <copy file="${dir.schema}/cluster-ddl.sql" todir="${dir.classes}"/>
-        <copy file="${dir.schema}/replication-ddl.sql" todir="${dir.classes}"/>
         <jar destfile="${dir.release}/${jarfilename}" basedir="${dir.classes}">
             <manifest>
                 <attribute name="Vendor" value="Vendare NetBlue, Inc"/>
