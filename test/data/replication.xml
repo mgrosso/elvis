@@ -1,7 +1,0 @@
-<!DOCTYPE dataset SYSTEM "dataset.dtd">
-<dataset>
-    <table name="bruce.node_cluster">
-        <column>node_id</column>
-        <column>cluster_id</column>
-    </table>
-</dataset>
