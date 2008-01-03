@@ -87,6 +87,7 @@ public class QueryCache {
         QueryParams queryParams = new QueryParams();
         StringBuffer queryBuffer = new StringBuffer();
         StringBuffer insertValues = new StringBuffer();
+        int numParamTypes = 0;
         
         switch (commandType.charAt(0)) {
             case INSERT_COMMAND_TYPE:
@@ -123,8 +124,11 @@ public class QueryCache {
                 }
             }
 
-            if(commandType.charAt(0) != DELETE_COMMAND_TYPE) { 
+            if(commandType.charAt(0) != DELETE_COMMAND_TYPE) {
+            	
                 paramTypeNames.append(tokens[FIELD_TYPE_INDEX]);
+                numParamTypes++;
+                
                 paramColumnNames.append(tokens[FIELD_NAME_INDEX]);
                 paramInfoIndices.append(i + 1);
             }
@@ -176,7 +180,10 @@ public class QueryCache {
                     if (i == 0) {
                     	if(paramTypeNames.length() > 0) paramTypeNames.append(PIPE_DLIMITER);
                     }
+                    
                     paramTypeNames.append(kv.getValue());
+                    numParamTypes++;
+                    
                     if (i + 1 < whereParams.size()) {
                         paramTypeNames.append(PIPE_DLIMITER);
                     }
@@ -201,6 +208,7 @@ public class QueryCache {
         }
         queryParams.setParamInfoIndices(paramInfoIndices.toString());
         queryParams.setQuery(queryBuffer.toString());
+        queryParams.setNumParamTypes(numParamTypes);
         
         return queryParams;
     }
