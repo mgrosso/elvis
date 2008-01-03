@@ -12,10 +12,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import org.apache.commons.dbcp.BasicDataSource;
+import org.apache.log4j.Logger;
+
 public class QueryCache {
     public static final char INSERT_COMMAND_TYPE = 'I';
     public static final char UPDATE_COMMAND_TYPE = 'U';
     public static final char DELETE_COMMAND_TYPE = 'D';
+    public static final String ESCPD_PIPE_DLIMITER = "\\|";
     public static final String PIPE_DLIMITER = "|";
     public static final String COLON_DELIMITER = ":";
     public static final String COMMA_SPACE_DELIMITER = ", ";
@@ -30,6 +34,8 @@ public class QueryCache {
     Map<String, Integer> tableCommandMap = null;  // table:operation map of queries
     List<QueryParams> queryList = null;
     
+//    private static final Logger LOGGER = Logger.getLogger(QueryCache.class);
+    
     public QueryParams getQueryInfo(String commandType, String schTableName, String infoString, Connection masterConn) throws SQLException {
         String tableCommand = schTableName + PIPE_DLIMITER + commandType;
         
@@ -40,7 +46,7 @@ public class QueryCache {
         }
         else {
             // get the schema and table name
-            String[] tokens = schTableName.split(".");
+            String[] tokens = schTableName.split("\\.");
             String schemaName = tokens[0];
             String tableName = tokens[1];
 
@@ -53,7 +59,7 @@ public class QueryCache {
             String colStr;
             
             if (resultSet.next()) {
-                String result = resultSet.getString(0);
+                String result = resultSet.getString(1);
                 
                 int startIndex = result.indexOf("(\"");;
                 if (startIndex > 0) {
@@ -85,7 +91,7 @@ public class QueryCache {
         switch (commandType.charAt(0)) {
             case INSERT_COMMAND_TYPE:
                 queryBuffer.append("INSERT INTO "+schemaName+ "." + tableName +" ( ");
-                insertValues.append(" ( ");
+                insertValues.append(" VALUES ( ");
                 break;
             case UPDATE_COMMAND_TYPE:
                 queryBuffer.append("UPDATE "+schemaName+ "." + tableName + " SET ");
@@ -95,8 +101,7 @@ public class QueryCache {
                 break;
         }
         
-        String[] columns = infoString.split(PIPE_DLIMITER);
-        queryParams.setNumParamTypes(columns.length);
+        String[] columns = infoString.split(ESCPD_PIPE_DLIMITER);
         
         int i = 0;
         StringBuffer paramTypeNames = new StringBuffer();
@@ -120,18 +125,16 @@ public class QueryCache {
 
             if(commandType.charAt(0) != DELETE_COMMAND_TYPE) { 
                 paramTypeNames.append(tokens[FIELD_TYPE_INDEX]);
+                paramColumnNames.append(tokens[FIELD_NAME_INDEX]);
+                paramInfoIndices.append(i + 1);
             }
             
-            paramColumnNames.append(tokens[FIELD_NAME_INDEX]);
-            paramInfoIndices.append(i + 1);
-            
-            if(i < columns.length) {
+            if(i + 1 < columns.length) {
                 if(commandType.charAt(0) != DELETE_COMMAND_TYPE) { 
-                    paramTypeNames.append(tokens[FIELD_TYPE_INDEX]+PIPE_DLIMITER);
+                    if(paramTypeNames.length() > 0) paramTypeNames.append(PIPE_DLIMITER);
+                    if(paramColumnNames.length() > 0) paramColumnNames.append(PIPE_DLIMITER);
+                    if(paramInfoIndices.length() > 0) paramInfoIndices.append(PIPE_DLIMITER);
                 }
-                
-                paramColumnNames.append(PIPE_DLIMITER);
-                paramInfoIndices.append(PIPE_DLIMITER);
             }
             
             
@@ -139,14 +142,14 @@ public class QueryCache {
             case INSERT_COMMAND_TYPE:
                 queryBuffer.append(tokens[FIELD_NAME_INDEX]);
                 insertValues.append("?");
-                if(i < columns.length) {
+                if(i+1 < columns.length) {
                     queryBuffer.append(", ");
                     insertValues.append(", ");
                 }
                 break;
             case UPDATE_COMMAND_TYPE:
-                queryBuffer.append(tokens[FIELD_NAME_INDEX] + "= ? ");
-                if(i < columns.length) {
+                queryBuffer.append(tokens[FIELD_NAME_INDEX] + " = ? ");
+                if(i+1 < columns.length) {
                     queryBuffer.append(", ");
                 }
                 break;
@@ -154,6 +157,10 @@ public class QueryCache {
                 break;
             }
             i++;
+        }
+
+        if(commandType.charAt(0) == INSERT_COMMAND_TYPE) {
+        	queryBuffer.append(" ) ").append(insertValues).append(" ) ");
         }
         
         if(commandType.charAt(0) != INSERT_COMMAND_TYPE) {
@@ -164,14 +171,17 @@ public class QueryCache {
                     if (i != 0 && i != whereParams.size()) {
                         queryBuffer.append(" AND ");
                     }
-                    queryBuffer.append((kv.getKey() + "= ? "));
+                    queryBuffer.append((kv.getKey() + " = ? "));
                     
                     if (i == 0) {
-                        paramTypeNames.append(PIPE_DLIMITER);
+                    	if(paramTypeNames.length() > 0) paramTypeNames.append(PIPE_DLIMITER);
                     }
                     paramTypeNames.append(kv.getValue());
-                    if (i < whereParams.size()) {
+                    if (i + 1 < whereParams.size()) {
                         paramTypeNames.append(PIPE_DLIMITER);
+                    }
+                    if(commandType.charAt(0) == DELETE_COMMAND_TYPE) { 
+                        paramColumnNames.append(kv.getKey());
                     }
                 }
             }
@@ -180,8 +190,14 @@ public class QueryCache {
         // set the query param types and query
         queryParams.setParamColumnNames(paramColumnNames.toString());
         queryParams.setParamTypeNames(paramTypeNames.toString());
-        if(commandType.charAt(0) != INSERT_COMMAND_TYPE && whereIndices.length() > 0) {
-            paramInfoIndices.append(PIPE_DLIMITER + whereIndices.toString());
+         
+        if(commandType.charAt(0) != INSERT_COMMAND_TYPE ) {
+        	//Ideally these should always be where for delete and update 
+        	if(paramInfoIndices.length() > 0 && whereIndices.length() > 0)
+        	{
+        		paramInfoIndices.append(PIPE_DLIMITER);
+        	}
+        	paramInfoIndices.append(whereIndices.toString());
         }
         queryParams.setParamInfoIndices(paramInfoIndices.toString());
         queryParams.setQuery(queryBuffer.toString());
@@ -197,5 +213,48 @@ public class QueryCache {
     public void flush() {
         tableCommandMap = null;
         queryList = null;
+    }
+    
+    public static void main(String[] args) throws SQLException {
+//	Make sure you have following table in the database you entered in the commandline
+//    	CREATE TABLE test1
+//    	(
+//    	    id serial NOT NULL primary key,
+//    	    c_bytea bytea,
+//    	    c_text text,
+//    	    c_int integer
+//    	);
+    	
+    	String db_url = args[0];
+    	QueryCache queryCache = new QueryCache();
+
+    	queryCache.init();
+
+    	BasicDataSource masterDataSource = new BasicDataSource();
+        masterDataSource.setUrl(db_url); //"jdbc:postgresql://smvcmpdev:5432/mpdb?user=portaladmin");
+        masterDataSource.setDriverClassName("org.postgresql.Driver");
+        
+        System.out.println("================================ INSERT ==============");
+        char commandType = QueryCache.INSERT_COMMAND_TYPE;
+        String schTableName = "public.test1";
+        String infoString = "id:int4:Mg==:Mg==|c_bytea:bytea:Ng==:Ng==|c_text:text:NA==:NQ==|c_int:int4:!:!";
+        Connection conn = masterDataSource.getConnection();
+        
+        QueryParams queryParams = queryCache.getQueryInfo(String.valueOf(commandType), schTableName, infoString, conn);
+        System.out.println("insert queryinfo: " + queryParams.toString());
+
+        System.out.println("================================ UPDATE ==============");
+        commandType = QueryCache.UPDATE_COMMAND_TYPE;
+        
+        queryParams = queryCache.getQueryInfo(String.valueOf(commandType), schTableName, infoString, conn);
+        System.out.println("update queryinfo: " + queryParams.toString());
+
+        System.out.println("================================ DELETE ==============");
+        commandType = QueryCache.DELETE_COMMAND_TYPE;
+        
+        queryParams = queryCache.getQueryInfo(String.valueOf(commandType), schTableName, infoString, conn);
+        System.out.println("delete queryinfo: " + queryParams.toString());
+
+        queryCache.flush();
     }
 }

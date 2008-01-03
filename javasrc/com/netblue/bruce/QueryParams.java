@@ -1,12 +1,12 @@
 package com.netblue.bruce;
 
 public class QueryParams {
-    String query;
-    String paramColumnNames;  // pipe delimited
-    String paramTypeNames;    // pipe delimited
-    String paramInfoIndices;  // pipe delimited
-    int numParamTypes = 0; // num question marks in query
-    int index = 0;  // index where this query params info is stored in the query cache
+    private String query;
+    private String paramColumnNames;  // pipe delimited
+    private String paramTypeNames;    // pipe delimited
+    private String paramInfoIndices;  // pipe delimited
+    private int numParamTypes = 0; // num question marks in query
+    private int index = 0;  // index where this query params info is stored in the query cache
     
     public String getQuery() {
         return query;
@@ -48,11 +48,11 @@ public class QueryParams {
     public String toString() {
         StringBuffer bf = new StringBuffer();
         bf.append("query=" + this.getQuery());
-        bf.append(", paramColumnNames=" + this.getParamColumnNames());
-        bf.append(", paramTypeNames=" + this.getParamTypeNames());
-        bf.append(", paramInfoIndices=" + this.getParamInfoIndices());
-        bf.append(", numParamTypes=" + this.getNumParamTypes());
-        bf.append(", index=" + this.getIndex());
+        bf.append("\n paramColumnNames=" + this.getParamColumnNames());
+        bf.append("\n paramTypeNames=" + this.getParamTypeNames());
+        bf.append("\n paramInfoIndices=" + this.getParamInfoIndices());
+        bf.append("\n numParamTypes=" + this.getNumParamTypes());
+        bf.append("\n index=" + this.getIndex());
         return bf.toString();
     }
 }
