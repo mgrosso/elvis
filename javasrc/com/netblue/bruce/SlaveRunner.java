@@ -60,6 +60,7 @@ public class SlaveRunner implements Runnable
         updateLastSnapshotQuery = properties.getProperty(SNAPSHOT_STATUS_UPDATE_KEY, SNAPSHOT_STATUS_UPDATE_DEFAULT);
         slaveTransactionIdQuery = properties.getProperty(SLAVE_UPDATE_TRANSACTION_ID_KEY, SLAVE_UPDATE_TRANSACTION_ID_DEFAULT);
         applyTransactionsQuery = properties.getProperty(APPLY_TRANSACTION_KEY, APPLY_TRANSACTION_DEFAULT);
+        applyTransactionsQuery2 = properties.getProperty(APPLY_TRANSACTION_2_KEY, APPLY_TRANSACTION_2_DEFAULT);
         daemonModeQuery = properties.getProperty(DAEMONMODE_QUERY_ID_KEY, DAEMONMODE_QUERY_ID_DEFAULT);
         normalModeQuery = properties.getProperty(NORMALMODE_QUERY_ID_KEY, NORMALMODE_QUERY_ID_DEFAULT);
 	slaveTableIDQuery = properties.getProperty(SLAVE_TABLE_ID_KEY,SLAVE_TABLE_ID_DEFAULT);
@@ -93,6 +94,9 @@ public class SlaveRunner implements Runnable
                         "the slavesnapshotstatus table on " + this.node.getUri() + " has been properly initialized.");
             }
 
+            // initialize the query cache
+            queryCache = new QueryCache();
+            queryCache.init();
         }
         catch (SQLException e)
         {
@@ -186,6 +190,7 @@ public class SlaveRunner implements Runnable
         updateLastSnapshotStatement.close();
         slaveTransactionIdStatement.close();
         applyTransactionsStatement.close();
+        applyTransactionsStatement2.close();
         daemonModeStatement.close();
         normalModeStatement.close();
 	slaveTableIDStatement.close();
@@ -204,6 +209,7 @@ public class SlaveRunner implements Runnable
         updateLastSnapshotStatement = connection.prepareStatement(updateLastSnapshotQuery);
         slaveTransactionIdStatement = connection.prepareStatement(slaveTransactionIdQuery);
         applyTransactionsStatement = connection.prepareStatement(applyTransactionsQuery);
+        applyTransactionsStatement2 = connection.prepareStatement(applyTransactionsQuery2);
         daemonModeStatement = connection.prepareStatement(daemonModeQuery);
         normalModeStatement = connection.prepareStatement(normalModeQuery);
 	slaveTableIDStatement = connection.prepareStatement(slaveTableIDQuery);
@@ -262,7 +268,7 @@ public class SlaveRunner implements Runnable
         {
             connection = getConnection();
             connection.setSavepoint();
-            applyAllChangesForTransaction(snapshot);
+            applyAllChangesForTransaction2(snapshot);
             updateSnapshotStatus(snapshot);
             connection.commit();
             this.lastProcessedSnapshot = snapshot;
@@ -275,12 +281,17 @@ public class SlaveRunner implements Runnable
                 if (connection != null)
                 {
                     connection.rollback();
+                    connection.close();
                 }
             }
             catch (SQLException e1)
             {
                 LOGGER.error("Unable to rollback last processed snapshot transaction.", e);
             }
+            
+            // flush and init the query cache
+            queryCache.flush();
+            queryCache.init();
         }
     }
 
@@ -371,6 +382,79 @@ public class SlaveRunner implements Runnable
 	    } finally {
 		masterC.close();
 	    }
+            normalModeStatement.execute();
+        }
+    }
+
+    /**
+     * Applies all outstanding {@link com.netblue.bruce.Change}s to this slave
+     *
+     * @param snapshot A {@link com.netblue.bruce.Snapshot} containing the latest master snapshot.
+     */
+    private void applyAllChangesForTransaction2(final Snapshot snapshot) throws SQLException
+    {
+        // This method is part of a larger transaction.  We don't validate/get the connection here,
+        // because if the connection becomes invalid as a part of that larger transaction, we're screwed
+        // anyway and we don't want to create a new connection for just part of the transaction
+    if (snapshot == null) {
+            LOGGER.trace("Latest Master snapshot is null");
+    } else {
+            LOGGER.trace("Applying transactions: ");
+        LOGGER.trace("Getting master database connection");
+        Connection masterC = masterDataSource.getConnection();
+        try { // prevent connection pool leakage
+        masterC.setAutoCommit(false);
+        PreparedStatement masterPS = 
+            masterC.prepareStatement(properties.getProperty(GET_OUTSTANDING_TRANSACTIONS_KEY,
+                                    GET_OUTSTANDING_TRANSACTIONS_DEFAULT));
+        masterPS.setFetchSize(50);
+        masterPS.setLong(1,lastProcessedSnapshot.getMinXid().getLong());
+        masterPS.setLong(2,snapshot.getMaxXid().getLong());
+        ResultSet masterRS = masterPS.executeQuery();
+        LOGGER.trace("Entering daemon mode for slave");
+        daemonModeStatement.execute();
+        HashSet<String> slaveTables = getSlaveTables();
+        LOGGER.trace("Processing changes");
+        while (masterRS.next()) {
+            TransactionID tid = new TransactionID(masterRS.getLong("xaction"));
+            // Skip transactions not between snapshots
+            if (lastProcessedSnapshot.transactionIDGE(tid) &&
+            snapshot.transactionIDLT(tid)) {
+            if (slaveTables.contains(masterRS.getString("tabname"))) {
+                LOGGER.trace("Applying change."+
+                     " xid:"+masterRS.getLong("rowid")+
+                     " tid:"+tid+
+                     " tabname:"+masterRS.getString("tabname")+
+                     " cmdtype:"+masterRS.getString("cmdtype")+
+                     " info:"+masterRS.getString("info"));
+                // call query cache
+                QueryParams queryParams = queryCache.getQueryInfo(masterRS.getString("cmdtype"), masterRS.getString("tabname"), 
+                                                                  masterRS.getString("info"), masterC);
+                applyTransactionsStatement.setInt(1, queryParams.getIndex());
+                applyTransactionsStatement.setInt(2, queryParams.getNumParamTypes());
+                applyTransactionsStatement.setString(3, queryParams.getQuery());
+                applyTransactionsStatement.setString(4, queryParams.getParamTypeNames());
+                applyTransactionsStatement.setString(5, queryParams.getParamColumnNames());
+                applyTransactionsStatement.setString(6, queryParams.getParamInfoIndices());
+                applyTransactionsStatement.setString(7, masterRS.getString("info"));
+                //applyTransactionsStatement.execute();
+                LOGGER.trace("Change applied");
+            } else {
+                LOGGER.trace("NOT applying change. Table not replicated on slave."+
+                     " xid:"+masterRS.getLong("rowid")+
+                     " tid:"+tid+
+                     " tabname:"+masterRS.getString("tabname")+
+                     " cmdtype:"+masterRS.getString("cmdtype")+
+                     " info:"+masterRS.getString("info"));
+            }
+            } else {
+            LOGGER.trace("Transaction not between snapshots. tid:"+tid+
+                     " lastslaveS:"+lastProcessedSnapshot+" masterS:"+snapshot);
+            }
+        }
+        } finally {
+        masterC.close();
+        }
             normalModeStatement.execute();
         }
     }
@@ -498,6 +582,7 @@ public class SlaveRunner implements Runnable
     private PreparedStatement updateLastSnapshotStatement;
     private PreparedStatement slaveTransactionIdStatement;
     private PreparedStatement applyTransactionsStatement;
+    private PreparedStatement applyTransactionsStatement2;
     private PreparedStatement daemonModeStatement;
     private PreparedStatement normalModeStatement;
     private PreparedStatement slaveTableIDStatement;
@@ -510,6 +595,7 @@ public class SlaveRunner implements Runnable
     private final String updateLastSnapshotQuery;
     private final String slaveTransactionIdQuery;
     private final String applyTransactionsQuery;
+    private final String applyTransactionsQuery2;
     private final String daemonModeQuery;
     private final String normalModeQuery;
     private final String slaveTableIDQuery;
@@ -530,6 +616,10 @@ public class SlaveRunner implements Runnable
     // Apply transactions to a slave
     private static final String APPLY_TRANSACTION_KEY = "bruce.applytransaction.query";
     private static final String APPLY_TRANSACTION_DEFAULT = "select bruce.applyLogTransaction(?, ?, ?)";
+
+    // Apply transactions 2 to a slave
+    private static final String APPLY_TRANSACTION_2_KEY = "bruce.applytransaction.query2";
+    private static final String APPLY_TRANSACTION_2_DEFAULT = "select bruce.applyLogTransaction2(?, ?, ?, ?, ?, ?, ?)";
 
     // Query the status table
     private static final String SNAPSHOT_STATUS_SELECT_KEY = "bruce.slave.query";
@@ -597,4 +687,6 @@ public class SlaveRunner implements Runnable
     private static final String NEXT_SNAPSHOT_UNAVAILABLE_SLEEP_KEY = "bruce.nextSnapshotUnavailableSleep";
     // This default value may need some tuning. 100ms seemed too small, 1s might be right
     private static int NEXT_SNAPSHOT_UNAVAILABLE_SLEEP_DEFAULT = 1000;
+    
+    private QueryCache queryCache;
 }
