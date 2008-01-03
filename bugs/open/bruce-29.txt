@@ -1,0 +1,28 @@
+Key:     BRUCE-29
+Type:   Improvement Improvement
+Status:     Open Open
+Priority:   Major Major
+Assignee:   Robert Klahn
+Reporter:   Robert Klahn
+Votes:  0
+Watchers:   0
+Operations
+
+If you were logged in you would be able to see more operations.
+    
+Bruce
+Lag on slave vs. lag on mirror should be maintained
+Created: 20/Dec/07 01:37 PM   Updated: 20/Dec/07 01:37 PM   
+Return to search
+Issue 1 of 29 issue(s)
+<< Previous | BRUCE-29 | Next >>
+Component/s:    None
+Affects Version/s:  1.0
+Fix Version/s:  1.5+
+
+Time Tracking:  
+Not Specified
+
+
+ Description    « Hide
+Snapshot time as taken on master should be captured in bruce.slavesnapshotstatus during snapshot processing. Thus, we can easily tell what the lag on a server is, without resorting to external information.

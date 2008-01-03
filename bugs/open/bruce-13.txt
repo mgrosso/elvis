@@ -1,0 +1,57 @@
+admin tool leaves master triggers behind when creating a slave from a master backup
+Created: 04/Sep/07 03:06 PM   Updated: 19/Oct/07 01:36 PM   
+Return to search
+Issue 17 of 29 issue(s)
+<< Previous | BRUCE-13 | Next >>
+Component/s:    Admin Tool
+Affects Version/s:  1.0
+Fix Version/s:  1.5
+
+Time Tracking:  
+Not Specified
+
+
+ Description    « Hide
+<noformat>
+bin/admin.sh -data /Users/rklahn/postgresql/src/bruce-1.0/rakdev_slave_config.xml -initsnapshots SLAVE -operation INSERT -url 'jdbc:postgresql://localhost:5432/rakdev_bruce_master?user=bruce&password=bruce'
+
+cat rakdev_slave_config.xml
+<!DOCTYPE dataset SYSTEM "dataset.dtd">
+<dataset>
+<table name="bruce.yf_node">
+<column>id</column>
+<column>available</column>
+<column>name</column>
+<column>uri</column>
+<column>includetable</column>
+<row>
+<value>2</value>
+<value>true</value>
+<value>rakdev cluster - Slave</value>
+<value>jdbc:postgresql://localhost:5432/rakdev_bruce_slave01?user=bruce&password=bruce</value>
+<value>^(public\.test1)$</value>
+</row>
+</table>
+<table name="bruce.node_cluster">
+<column>node_id</column>
+<column>cluster_id</column>
+<row>
+<value>2</value>
+<value>1</value>
+</row>
+</table>
+</dataset>
+
+rakdev_bruce_slave01=# \d test1
+Table "public.test1"
+Column | Type | Modifiers
+-----------------------
+id | bigint | not null
+Indexes:
+"test1_pkey" PRIMARY KEY, btree (id)
+Triggers:
+test1_deny BEFORE INSERT OR DELETE OR UPDATE ON test1 FOR EACH ROW EXECUTE PROCEDURE bruce.denyaccesstrigger()
+test1_sn BEFORE INSERT OR DELETE OR UPDATE ON test1 FOR EACH STATEMENT EXECUTE PROCEDURE bruce.logsnapshottrigger()
+test1_tx AFTER INSERT OR DELETE OR UPDATE ON test1 FOR EACH ROW EXECUTE PROCEDURE bruce.logtransactiontrigger()
+
+<noformat>

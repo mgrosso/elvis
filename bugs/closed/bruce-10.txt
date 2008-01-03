@@ -1,0 +1,36 @@
+includetable regex limited to 255 chars.
+Created: 21/Aug/07 02:42 PM   Updated: 19/Oct/07 01:42 PM   
+Return to search
+Issue 20 of 29 issue(s)
+<< Previous | BRUCE-10 | Next >>
+Component/s:    Admin Tool
+Affects Version/s:  0.5
+Fix Version/s:  1.0
+
+Time Tracking:  
+Original Estimate:  Not Specified   
+Remaining Estimate:     0 minutes   
+Time Spent - 8 hours
+Time Spent:     8 hours     
+Time Spent - 8 hours
+
+
+ Description    « Hide
+[bruce@db-bipp (db-bipp.mw) ~]$ bruce-0.5/bin/admin.sh -data ~/db-sites-pg-mirror.setup_master.xml -initnodeschema -operation INSERT -url 'jdbc:postgresql://localhost:15432/bruce_config?user=bruce&password=bruce'
+Using JAVA_HOME: /usr/java/jdk1.5.0_12/
+FATAL main com.netblue.bruce.admin.Main - Problem encountered with database. Unable to continue
+org.postgresql.util.PSQLException: ERROR: value too long for type character varying(255)
+
+Workaround:
+
+alter table yf_node alter includetable type text;
+
+ Description    
+   [bruce@db-bipp (db-bipp.mw) ~]$ bruce-0.5/bin/admin.sh -data ~/db-sites-pg-mirror.setup_master.xml -initnodeschema -operation INSERT -url 'jdbc:postgresql://localhost:15432/bruce_config?user=bruce&password=bruce' Using JAVA_HOME: /usr/java/jdk1.5.0_12/ FATAL main com.netblue.bruce.admin.Main - Problem encountered with database. Unable to continue org.postgresql.util.PSQLException: ERROR: value too long for type character varying(255) Workaround: alter table yf_node alter includetable type text;
+    Show »
+
+ All     Comments    Work Log    Change History           Sort Order: [Ascending order - Click to sort in descending order]
+[ Permlink | « Hide ]
+Robert Klahn - 19/Oct/07 01:41 PM
+Fixed by http://svn.bruce.codehaus.org/changelog/bruce/?cs=66
+

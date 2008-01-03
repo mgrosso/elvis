@@ -1,0 +1,82 @@
+<!DOCTYPE dataset SYSTEM "dataset.dtd">
+<dataset>
+    <table name="bruce.yf_node">
+        <column>id</column>
+        <column>available</column>
+        <column>name</column>
+        <column>uri</column>
+        <column>includetable</column>
+        <row>
+            <value>1</value>
+            <value>true</value>
+            <value>Cluster 0 - Primary master</value>
+            <value>jdbc:postgresql://localhost:5432/bruce?user=bruce&amp;password=bruce</value>
+            <value>regextest.*\.o.*|regextest.*\..*ue</value>
+        </row>
+        <row>
+            <value>2</value>
+            <value>true</value>
+            <value>Cluster 0 - Slave Uno</value>
+            <value>jdbc:postgresql://localhost:5432/bruce?user=bruce&amp;password=bruce</value>
+            <value>.+\.green.*</value>
+        </row>
+        <row>
+            <value>3</value>
+            <value>true</value>
+            <value>Cluster 0 - Slave Dos</value>
+            <value>jdbc:postgresql://localhost:5432/bruce?user=bruce&amp;password=bruce</value>
+            <value>((?!.*\.red.*).*)</value>
+        </row>
+        <row>
+            <value>4</value>
+            <value>true</value>
+            <value>Cluster 1 - Master</value>
+            <value>jdbc:postgresql://localhost:5432/bruce?user=bruce&amp;password=bruce</value>
+        </row>
+        <row>
+            <value>5</value>
+            <value>true</value>
+            <value>Cluster 1 - Slave Uno</value>
+            <value>jdbc:postgresql://localhost:5432/bruce?user=bruce&amp;password=bruce</value>
+        </row>
+    </table>
+    <table name="bruce.yf_cluster">
+        <column>id</column>
+        <column>name</column>
+        <column>master_node_id</column>
+        <row>
+            <value>1000</value>
+            <value>Cluster Un</value>
+            <value>1</value>
+        </row>
+        <row>
+            <value>1001</value>
+            <value>Cluster Deux</value>
+            <value>4</value>
+        </row>
+    </table>
+    <table name="bruce.node_cluster">
+        <column>node_id</column>
+        <column>cluster_id</column>
+        <row>
+            <value>1</value>
+            <value>1000</value>
+        </row>
+        <row>
+            <value>2</value>
+            <value>1000</value>
+        </row>
+        <row>
+            <value>3</value>
+            <value>1000</value>
+        </row>
+        <row>
+            <value>4</value>
+            <value>1001</value>
+        </row>
+        <row>
+            <value>5</value>
+            <value>1001</value>
+        </row>
+    </table>
+</dataset>

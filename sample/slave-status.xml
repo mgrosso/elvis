@@ -1,0 +1,97 @@
+<!DOCTYPE dataset SYSTEM "dataset.dtd">
+<!-- $Id: slave-status.xml 68951 2007-05-10 18:54:43Z lball $ -->
+<!-- Data for testing against the slavesnapshotstatus table -->
+<dataset>
+    <table name="bruce.slavesnapshotstatus">
+        <column>clusterid</column>
+        <column>slave_xaction</column>
+        <column>master_current_xaction</column>
+        <column>master_min_xaction</column>
+        <column>master_max_xaction</column>
+        <column>master_outstanding_xactions</column>
+        <column>update_time</column>
+        <row>
+            <value>1000</value>
+            <value>100</value>
+            <value>100</value>
+            <value>99</value>
+            <value>100</value>
+        </row>
+    </table>
+
+    <table name="bruce.yf_node">
+        <column>id</column>
+        <column>available</column>
+        <column>name</column>
+        <column>uri</column>
+        <row>
+            <value>1</value>
+            <value>true</value>
+            <value>Cluster 0 - Primary master</value>
+            <value>jdbc:postgresql://localhost:5432/bruce?user=lball</value>
+        </row>
+        <row>
+            <value>2</value>
+            <value>true</value>
+            <value>Cluster 0 - Slave Uno</value>
+            <value>jdbc:postgresql://localhost:5432/bruce?user=lball</value>
+        </row>
+        <row>
+            <value>3</value>
+            <value>true</value>
+            <value>Cluster 0 - Slave Dos</value>
+            <value>jdbc:postgresql://localhost:5432/bruce?user=lanceball</value>
+        </row>
+        <row>
+            <value>4</value>
+            <value>true</value>
+            <value>Cluster 1 - Master</value>
+            <value>jdbc:postgresql://localhost:5432/bruce?user=lball</value>
+        </row>
+        <row>
+            <value>5</value>
+            <value>true</value>
+            <value>Cluster 1 - Slave Uno</value>
+            <value>jdbc:postgresql://localhost:5432/bruce?user=lball</value>
+        </row>
+    </table>
+    <table name="bruce.yf_cluster">
+        <column>id</column>
+        <column>name</column>
+        <column>master_node_id</column>
+        <row>
+            <value>1000</value>
+            <value>Cluster Un</value>
+            <value>1</value>
+        </row>
+        <row>
+            <value>1001</value>
+            <value>Cluster Deux</value>
+            <value>4</value>
+        </row>
+    </table>
+    <table name="bruce.node_cluster">
+        <column>node_id</column>
+        <column>cluster_id</column>
+        <row>
+            <value>1</value>
+            <value>1000</value>
+        </row>
+        <row>
+            <value>2</value>
+            <value>1000</value>
+        </row>
+        <row>
+            <value>3</value>
+            <value>1000</value>
+        </row>
+        <row>
+            <value>4</value>
+            <value>1001</value>
+        </row>
+        <row>
+            <value>5</value>
+            <value>1001</value>
+        </row>
+    </table>
+</dataset>

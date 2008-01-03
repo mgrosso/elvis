@@ -1,0 +1,18 @@
+<!DOCTYPE dataset SYSTEM "dataset.dtd">
+<!-- $Id:$ -->
+<dataset>
+    <table name="bruce.yf_node">
+        <column>id</column>
+        <column>available</column>
+        <column>name</column>
+	<column>uri</column>
+        <column>includetable</column>
+        <row>
+            <value>1</value>
+            <value>true</value>
+            <value>Cluster 0 - Primary master</value>
+            <value>jdbc:postgresql://localhost:5432/bruce_master?user=bruce</value>
+            <value>@INCLUDETABLE@</value>
+        </row>
+    </table>
+</dataset>

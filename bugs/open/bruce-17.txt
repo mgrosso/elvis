@@ -1,0 +1,17 @@
+Sometimes, connectivity is lost to slave database, and daemon stops retrying to connect
+Created: 09/Oct/07 06:36 PM   Updated: 19/Oct/07 01:36 PM   
+Return to search
+Issue 13 of 29 issue(s)
+<< Previous | BRUCE-17 | Next >>
+Component/s:    Daemon
+Affects Version/s:  1.0
+Fix Version/s:  1.5
+
+Time Tracking:  
+Not Specified
+
+
+ Description    « Hide
+At least one situation is this:
+
+Slave machine kernel panics, and is down for some unknown period of time. Once back up, a daemon restart starts replication to the former dead machine just fine.
