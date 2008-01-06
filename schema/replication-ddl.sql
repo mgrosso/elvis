@@ -58,8 +58,8 @@ CREATE FUNCTION bruce.debug_echo(int, text) RETURNS cstring
 CREATE FUNCTION bruce.set_tightmem(int) RETURNS cstring
         AS 'bruce.so', 'set_tightmem' LANGUAGE c;
 
-CREATE FUNCTION bruce.debug_get_slave_tables () RETURNS SETOF VARCHAR AS
-'select n.nspname||''.''||c.relname as tablename 
+CREATE FUNCTION bruce.debug_get_slave_tables () RETURNS SETOF VARCHAR AS $$ 
+select n.nspname|| '.' ||c.relname as tablename 
 from pg_class c, pg_namespace n
 where c.relnamespace = n.oid and c.oid in (
         select tgrelid 
@@ -67,15 +67,16 @@ where c.relnamespace = n.oid and c.oid in (
         where tgfoid = (
             select oid from pg_proc
             where 
-                proname = ''denyaccesstrigger''
+                proname = 'denyaccesstrigger'
                 and pronamespace = (
                     select oid 
                     from pg_namespace
-                    where nspname = ''bruce''
+                    where nspname = 'bruce'
                 )
         )
 )
-order by 1;'
+order by 1;
+$$ language sql ;
 
 
 
