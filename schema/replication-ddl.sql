@@ -1,9 +1,8 @@
-DROP SCHEMA bruce;
+DROP SCHEMA bruce cascade;
 CREATE SCHEMA bruce;
 
 GRANT usage ON SCHEMA bruce TO public;
 
-DROP TABLE bruce.replication_version;
 CREATE TABLE bruce.replication_version
 (
     major int,
@@ -13,26 +12,6 @@ CREATE TABLE bruce.replication_version
 );
 
 INSERT INTO bruce.replication_version VALUES (1, 0, 0, 'Replication 1.0 release');
-
-DROP TABLE bruce.currentlog;
-DROP VIEW bruce.snapshotlog;
-DROP TABLE bruce.snapshotlog_1;
-DROP VIEW bruce.transactionlog;
-DROP TABLE bruce.transactionlog_1;
-DROP TABLE bruce.slavesnapshotstatus;
-DROP INDEX bruce.transactionlog_1_xaction_idx;
-
-DROP FUNCTION bruce.applylogtransaction(text, text, text) cascade;
-DROP FUNCTION bruce.daemonmode() cascade;
-DROP FUNCTION bruce.denyaccesstrigger() cascade;
-DROP FUNCTION bruce.logsnapshottrigger() cascade;
-DROP FUNCTION bruce.logsnapshot() cascade;
-DROP FUNCTION bruce.logtransactiontrigger() cascade;
-DROP FUNCTION bruce.normalmode() cascade;
-
-DROP SEQUENCE bruce.currentlog_id_seq;
-DROP SEQUENCE bruce.transactionlog_rowseq;
-
 
 CREATE FUNCTION bruce.applylogtransaction(text, text, text) RETURNS boolean
         AS 'bruce.so', 'applyLogTransaction' LANGUAGE c;
@@ -54,6 +33,50 @@ CREATE FUNCTION bruce.logtransactiontrigger() RETURNS trigger
 
 CREATE FUNCTION bruce.normalmode() RETURNS integer
         AS 'bruce.so', 'normalMode' LANGUAGE c;
+
+CREATE FUNCTION bruce.applylogtransaction2(int, int, text, text, text, text) RETURNS boolean
+        AS 'bruce.so', 'applyLogTransaction2' LANGUAGE c;
+
+CREATE FUNCTION bruce.debug_fakeapplylog(int, int, text, text, text, text) RETURNS cstring
+        AS 'bruce.so', 'debug_fakeapplylog' LANGUAGE c;
+
+CREATE FUNCTION bruce.debug_setcacheitem(int, int, text, text, text) RETURNS cstring
+        AS 'bruce.so', 'debug_setcacheitem' LANGUAGE c;
+
+CREATE FUNCTION bruce.debug_peekcacheitem(int) RETURNS cstring
+        AS 'bruce.so', 'debug_peekcacheitem' LANGUAGE c;
+
+CREATE FUNCTION bruce.debug_parseinfo(int, text) RETURNS cstring
+        AS 'bruce.so', 'debug_parseinfo' LANGUAGE c;
+
+CREATE FUNCTION bruce.debug_applyinfo(int, text) RETURNS boolean
+        AS 'bruce.so', 'debug_applyinfo' LANGUAGE c;
+
+CREATE FUNCTION bruce.debug_echo(int, text) RETURNS cstring
+        AS 'bruce.so', 'debug_echo' LANGUAGE c;
+
+CREATE FUNCTION bruce.set_tightmem(int) RETURNS cstring
+        AS 'bruce.so', 'set_tightmem' LANGUAGE c;
+
+CREATE FUNCTION bruce.getslaves () RETURNS SETOF VARCHAR AS
+'select n.nspname||''.''||c.relname as tablename 
+from pg_class c, pg_namespace n
+where c.relnamespace = n.oid and c.oid in (
+        select tgrelid 
+        from pg_trigger
+        where tgfoid = (
+            select oid from pg_proc
+            where 
+                proname = ''denyaccesstrigger''
+                and pronamespace = (
+                    select oid 
+                    from pg_namespace
+                    where nspname = ''bruce''
+                )
+        )
+)
+order by 1;'
+
 
 
 CREATE SEQUENCE bruce.currentlog_id_seq INCREMENT BY 1 NO MAXVALUE NO MINVALUE CACHE 1;
@@ -83,7 +106,7 @@ CREATE TABLE bruce.snapshotlog_1 (
 
 GRANT ALL ON bruce.snapshotlog_1 TO PUBLIC;
 
-CREATE VIEW bruce.snapshotlog AS SELECT * FROM snapshotlog_1;
+CREATE VIEW bruce.snapshotlog AS SELECT * FROM bruce.snapshotlog_1;
 
 GRANT ALL ON bruce.snapshotlog TO PUBLIC;
 
