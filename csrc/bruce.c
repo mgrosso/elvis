@@ -426,7 +426,17 @@ static void callback_param_index( statement_cache_item *cache_item, int param, c
             "bruce error, applyLogTransaction2 could convert to int index %d for query paramater[%s]", 
             param,field_value)));
     }
-    cache_item->param_indices[param]=c;
+    //
+    //for inserts, the "old" value is actually the new value to use.  see
+    //comments in parse_change_info() function and read section 33.3, "Writing
+    //trigger functions in C" in the postgres manual.  The java daemon will be
+    //passing us parameter indices using the intuitive but incorrect notion
+    //that inserts should reference the "new" section.
+    //
+    if(strcasestr(cache_item->query_string, "INSERT")){
+        c = -1 * c;
+    }
+    cache_item->param_indices[param]= c;
 }
 
 /* take a string indicating the type of a parameter and place the conversion function and arguments into an array. */
@@ -476,7 +486,7 @@ static char * debug_cache_item(statement_cache_item *cache_item){
     bruce_append_number(output,STACK_STRING_SIZE,(int)cache_item->num_info_columns_to_parse);
     bruce_append_list(output,STACK_STRING_SIZE,"\nparameter type names: ",cache_item->param_type_names,cache_item->num_params, ",");
     bruce_append_number_list(output,STACK_STRING_SIZE,"\nparameter info indices: ",cache_item->param_indices,cache_item->num_params, ",");
-    bruce_append_list(output,STACK_STRING_SIZE,"decoded parameter string values: ",cache_item->decoded_values,cache_item->num_params, ",");
+    bruce_append_list(output,STACK_STRING_SIZE,"\ndecoded parameter string values: ",cache_item->decoded_values,cache_item->num_params, ",");
     bruce_append_list(output,STACK_STRING_SIZE,"\ninfo strings raw_old: ",cache_item->raw_old,cache_item->num_info_columns_to_parse, ",");
     bruce_append_list(output,STACK_STRING_SIZE,"\ninfo strings raw_new: ",cache_item->raw_new,cache_item->num_info_columns_to_parse, ",");
     bruce_append_string(output,STACK_STRING_SIZE,"\nnulls '");
@@ -552,6 +562,9 @@ static void parse_change_info(statement_cache_item *item,char *change_info){
     //
     // rowid|xaction|cmdtype|tabname|info
     //         1 | 1900649736 | U       | datafeeds.feed_offer_site | id:int8:MTA4Nw==:MTA4Nw==|site_id:int8:MTA2:MTA2|feed_offer_id:int8:NTE=:NTE=|start_time:timestamp:MjAwNy0wNC0wMiAxMjowMDowMC4yNg==:MjAwNy0wNC0wMiAxMjowMDowMC4yNg==|end_time:timestamp:!:!|is_active:bool:dA==:dA==|last_feed_response:varchar:MjAw:MjAw|last_feed_timestamp:timestamp:MjAwNy0xMi0xOCAxMzo1OTo1OS43ODU=:MjAwNy0xMi0xOCAxMzo1OTo1OS43ODU=|version:int8:MA==:MA==|last_update_time:timestamp:MjAwNy0xMi0xOCAyMDozMjozOC4yNDQ=:MjAwNy0xMi0xOCAyMTozMjo0NC40NDk=
+    // 4462805 | 3385844160 | I       | sites.tracking      | id:int8:MTA5MjM3NjMwMA==:!|visit_date:timestamp:MjAwNy0xMi0xMyAwMToyNzo0Ny42OTQ=:!|name:varchar:Y2lk:!|value:varchar:OTk=:!|source:varchar:!:!|visit_id:int8:NDUwMzU5OTc2Mzk2OTE1OQ==:!
+    //  5524544 | 3389775382 | D       | sites.flow_experience_promotion | flow_experience_id:int4:MTkw:!|promotion_id:int4:MTAwMDkw:!|rank:int4:MA==:!|create_date:timestamp:MjAwNy0xMS0wNSAxNTo0ODoyMi4wMzg5NDM=:!|version:int8:MA==:!|last_update_time:timestamp:MjAwNy0xMS0wNSAxNTo0ODoyMi4wMzg=:!
+    //
     //
     //this function parses the info column, looking specifically for the old and new values for each column 
     //of the replicated table row.
@@ -566,6 +579,15 @@ static void parse_change_info(statement_cache_item *item,char *change_info){
     //interpret thusly:
     //"name of column 1" : "type of column 1" : "old column 1 value in base64 : "new column 1 value in base64"
     // followed by optional '|',  and then "name of column 2" and so on.
+    //
+    //there is one problem with this interpretation.  in postgres c functions acting as triggers, the "new" value
+    //is only available for updates.  inserts and deletes are both supposed to use the "old" value, and receive
+    //null for the "new" value.  thats intuitive for deletes, but counter intuitive for inserts.  The java code
+    //will be passing us index values that are positive or negative according to the intuitive interpretation. 
+    //rather than "fix" that in the parse here, we'll do that when we interpret the parameter indexes.
+    //
+    //to see this, note in the sample rows above that both the insert and delete have values in the "old" part
+    //but not in the "new" part.
     //
     //comments below identify where the pointer 'c' is using ascii art to move the c underneath the right
     //character.
@@ -734,6 +756,7 @@ Datum applyLogTransaction2(PG_FUNCTION_ARGS) {
     char *param_info_indices_delimited =  Datum2CString(PG_GETARG_DATUM(4));//pipe delimited indices into the info string, with negative numbers indicating to use old values.
     char *change_info  =                  Datum2CString(PG_GETARG_DATUM(5));// bruce.transactinlog.info string
 
+    ereport(NOTICE,(errmsg_internal("info:%u,%u,%s,%s,%s,%s",cache_index,num_params,query_string,param_type_names_delimited,param_info_indices_delimited,change_info)));
     replication_mode=MODE_DAEMON;
     applyLogTransaction2_inner(&cache_item,
         cache_index, num_params, query_string,
