@@ -34,7 +34,11 @@ public class QueryCache {
     Map<String, Integer> tableCommandMap = null;  // table:operation map of queries
     List<QueryParams> queryList = null;
     
-//    private static final Logger LOGGER = Logger.getLogger(QueryCache.class);
+    private static final Logger LOGGER = Logger.getLogger(QueryCache.class);
+
+    private String addParam( int p ){
+        return " $" + p + " ";
+    }
     
     public QueryParams getQueryInfo(String commandType, String schTableName, String infoString, Connection masterConn) throws SQLException {
         String tableCommand = schTableName + PIPE_DLIMITER + commandType;
@@ -42,9 +46,11 @@ public class QueryCache {
         // first check if we have already processed this query
         Integer index = tableCommandMap.get(tableCommand);
         if(index != null) {
+            LOGGER.trace("returning index "+index + " for "+tableCommand);
             return queryList.get(index);
         }
         else {
+            LOGGER.trace("making query for "+tableCommand);
             // get the schema and table name
             String[] tokens = schTableName.split("\\.");
             String schemaName = tokens[0];
@@ -79,6 +85,7 @@ public class QueryCache {
             queryList.add(queryParams);
             queryParams.setIndex(queryList.size()-1);
             tableCommandMap.put(tableCommand, queryParams.getIndex());
+            LOGGER.trace("created at index "+queryParams.getIndex()+" for "+tableCommand);
             return queryParams;
         }
     }
@@ -88,8 +95,9 @@ public class QueryCache {
         StringBuffer queryBuffer = new StringBuffer();
         StringBuffer insertValues = new StringBuffer();
         int numParamTypes = 0;
+        char command = commandType.charAt(0);
         
-        switch (commandType.charAt(0)) {
+        switch (command) {
             case INSERT_COMMAND_TYPE:
                 queryBuffer.append("INSERT INTO "+schemaName+ "." + tableName +" ( ");
                 insertValues.append(" VALUES ( ");
@@ -114,7 +122,7 @@ public class QueryCache {
         for(String column : columns) {
             String tokens[] = column.split(COLON_DELIMITER);
             
-            if(commandType.charAt(0) != INSERT_COMMAND_TYPE) {
+            if(command != INSERT_COMMAND_TYPE) {
                 if (uniqCols.contains(tokens[FIELD_NAME_INDEX])) {
                     whereParams.put(tokens[FIELD_NAME_INDEX], tokens[FIELD_TYPE_INDEX]);
                     if (whereIndices.length() > 0) {
@@ -124,7 +132,7 @@ public class QueryCache {
                 }
             }
 
-            if(commandType.charAt(0) != DELETE_COMMAND_TYPE) {
+            if(command != DELETE_COMMAND_TYPE) {
             	
                 paramTypeNames.append(tokens[FIELD_TYPE_INDEX]);
                 numParamTypes++;
@@ -134,7 +142,7 @@ public class QueryCache {
             }
             
             if(i + 1 < columns.length) {
-                if(commandType.charAt(0) != DELETE_COMMAND_TYPE) { 
+                if(command != DELETE_COMMAND_TYPE) { 
                     if(paramTypeNames.length() > 0) paramTypeNames.append(PIPE_DLIMITER);
                     if(paramColumnNames.length() > 0) paramColumnNames.append(PIPE_DLIMITER);
                     if(paramInfoIndices.length() > 0) paramInfoIndices.append(PIPE_DLIMITER);
@@ -142,17 +150,17 @@ public class QueryCache {
             }
             
             
-            switch (commandType.charAt(0)) {
+            switch (command) {
             case INSERT_COMMAND_TYPE:
                 queryBuffer.append(tokens[FIELD_NAME_INDEX]);
-                insertValues.append("?");
+                insertValues.append(addParam(numParamTypes));
                 if(i+1 < columns.length) {
                     queryBuffer.append(", ");
                     insertValues.append(", ");
                 }
                 break;
             case UPDATE_COMMAND_TYPE:
-                queryBuffer.append(tokens[FIELD_NAME_INDEX] + " = ? ");
+                queryBuffer.append(tokens[FIELD_NAME_INDEX] + " = "+ addParam(numParamTypes));
                 if(i+1 < columns.length) {
                     queryBuffer.append(", ");
                 }
@@ -160,14 +168,14 @@ public class QueryCache {
             case DELETE_COMMAND_TYPE:
                 break;
             }
-            i++;
+            ++i;
         }
 
-        if(commandType.charAt(0) == INSERT_COMMAND_TYPE) {
+        if(command == INSERT_COMMAND_TYPE) {
         	queryBuffer.append(" ) ").append(insertValues).append(" ) ");
         }
         
-        if(commandType.charAt(0) != INSERT_COMMAND_TYPE) {
+        if(command != INSERT_COMMAND_TYPE) {
             if(whereParams.size() > 0) {
                 i = 0;
                 queryBuffer.append(" WHERE ");
@@ -175,7 +183,7 @@ public class QueryCache {
                     if (i != 0 && i != whereParams.size()) {
                         queryBuffer.append(" AND ");
                     }
-                    queryBuffer.append((kv.getKey() + " = ? "));
+                    queryBuffer.append((kv.getKey() + " = " + addParam(numParamTypes+1)));
                     
                     if (i == 0) {
                     	if(paramTypeNames.length() > 0) paramTypeNames.append(PIPE_DLIMITER);
@@ -187,9 +195,10 @@ public class QueryCache {
                     if (i + 1 < whereParams.size()) {
                         paramTypeNames.append(PIPE_DLIMITER);
                     }
-                    if(commandType.charAt(0) == DELETE_COMMAND_TYPE) { 
+                    if(command == DELETE_COMMAND_TYPE) { 
                         paramColumnNames.append(kv.getKey());
                     }
+                    ++i;
                 }
             }
         }
@@ -198,7 +207,7 @@ public class QueryCache {
         queryParams.setParamColumnNames(paramColumnNames.toString());
         queryParams.setParamTypeNames(paramTypeNames.toString());
          
-        if(commandType.charAt(0) != INSERT_COMMAND_TYPE ) {
+        if(command != INSERT_COMMAND_TYPE ) {
         	//Ideally these should always be where for delete and update 
         	if(paramInfoIndices.length() > 0 && whereIndices.length() > 0)
         	{
@@ -213,14 +222,9 @@ public class QueryCache {
         return queryParams;
     }
     
-    public void init() {
+    public QueryCache() {
         tableCommandMap = new HashMap<String, Integer>();  // table:operation map of queries
         queryList = new ArrayList<QueryParams>(1024);        
-    }
-    
-    public void flush() {
-        tableCommandMap = null;
-        queryList = null;
     }
     
     public static void main(String[] args) throws SQLException {
@@ -235,8 +239,6 @@ public class QueryCache {
     	
     	String db_url = args[0];
     	QueryCache queryCache = new QueryCache();
-
-    	queryCache.init();
 
     	BasicDataSource masterDataSource = new BasicDataSource();
         masterDataSource.setUrl(db_url); //"jdbc:postgresql://smvcmpdev:5432/mpdb?user=portaladmin");
@@ -263,6 +265,5 @@ public class QueryCache {
         queryParams = queryCache.getQueryInfo(String.valueOf(commandType), schTableName, infoString, conn);
         System.out.println("delete queryinfo: " + queryParams.toString());
 
-        queryCache.flush();
     }
 }
