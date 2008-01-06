@@ -95,7 +95,6 @@ public class SlaveRunner implements Runnable
 
             // initialize the query cache
             queryCache = new QueryCache();
-            queryCache.init();
         }
         catch (SQLException e)
         {
@@ -281,10 +280,6 @@ public class SlaveRunner implements Runnable
             {
                 LOGGER.error("Unable to rollback last processed snapshot transaction.", e);
             }
-            
-            // flush and init the query cache
-            queryCache.flush();
-            queryCache.init();
         }
     }
 
@@ -542,7 +537,7 @@ public class SlaveRunner implements Runnable
 
     // Apply transactions to a slave
     private static final String APPLY_TRANSACTION_KEY = "bruce.applytransaction.query";
-    private static final String APPLY_TRANSACTION_DEFAULT = "select bruce.applyLogTransaction2(?, ?, ?, ?, ?, ?, ?)";
+    private static final String APPLY_TRANSACTION_DEFAULT = "select bruce.applyLogTransaction2(?, ?, ?, ?, ?, ?)";
 
     // Query the status table
     private static final String SNAPSHOT_STATUS_SELECT_KEY = "bruce.slave.query";
