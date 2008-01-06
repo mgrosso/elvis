@@ -58,7 +58,7 @@ CREATE FUNCTION bruce.debug_echo(int, text) RETURNS cstring
 CREATE FUNCTION bruce.set_tightmem(int) RETURNS cstring
         AS 'bruce.so', 'set_tightmem' LANGUAGE c;
 
-CREATE FUNCTION bruce.getslaves () RETURNS SETOF VARCHAR AS
+CREATE FUNCTION bruce.debug_get_slave_tables () RETURNS SETOF VARCHAR AS
 'select n.nspname||''.''||c.relname as tablename 
 from pg_class c, pg_namespace n
 where c.relnamespace = n.oid and c.oid in (
