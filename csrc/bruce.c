@@ -756,7 +756,7 @@ Datum applyLogTransaction2(PG_FUNCTION_ARGS) {
     char *param_info_indices_delimited =  Datum2CString(PG_GETARG_DATUM(4));//pipe delimited indices into the info string, with negative numbers indicating to use old values.
     char *change_info  =                  Datum2CString(PG_GETARG_DATUM(5));// bruce.transactinlog.info string
 
-    ereport(NOTICE,(errmsg_internal("info:%u,%u,%s,%s,%s,%s",cache_index,num_params,query_string,param_type_names_delimited,param_info_indices_delimited,change_info)));
+    //ereport(NOTICE,(errmsg_internal("info:%u,%u,%s,%s,%s,%s",cache_index,num_params,query_string,param_type_names_delimited,param_info_indices_delimited,change_info)));
     replication_mode=MODE_DAEMON;
     applyLogTransaction2_inner(&cache_item,
         cache_index, num_params, query_string,

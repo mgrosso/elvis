@@ -46,11 +46,11 @@ public class QueryCache {
         // first check if we have already processed this query
         Integer index = tableCommandMap.get(tableCommand);
         if(index != null) {
-            LOGGER.trace("returning index "+index + " for "+tableCommand);
+            //LOGGER.trace("returning index "+index + " for "+tableCommand);
             return queryList.get(index);
         }
         else {
-            LOGGER.trace("making query for "+tableCommand);
+            //LOGGER.trace("making query for "+tableCommand);
             // get the schema and table name
             String[] tokens = schTableName.split("\\.");
             String schemaName = tokens[0];
@@ -85,7 +85,7 @@ public class QueryCache {
             queryList.add(queryParams);
             queryParams.setIndex(queryList.size()-1);
             tableCommandMap.put(tableCommand, queryParams.getIndex());
-            LOGGER.trace("created at index "+queryParams.getIndex()+" for "+tableCommand);
+            //LOGGER.trace("created at index "+queryParams.getIndex()+" for "+tableCommand);
             return queryParams;
         }
     }
