@@ -67,16 +67,19 @@ public class QueryCache {
             if (resultSet.next()) {
                 String result = resultSet.getString(1);
                 
-                int startIndex = result.indexOf("(\"");;
-                if (startIndex > 0) {
-                    colStr = result.substring(startIndex+2, result.indexOf("\")"));
-                }
-                else {
-                    startIndex = result.indexOf("(");
-                    colStr = result.substring(startIndex+1, result.indexOf(")"));
-                }
                 
-                uniqCols.addAll(Arrays.asList(colStr.split(COMMA_SPACE_DELIMITER)));
+//                int startIndex = result.indexOf("(\"");;
+//                if (startIndex > 0) {
+//                    colStr = result.substring(startIndex+2, result.indexOf("\")"));
+//                }
+//                else {
+//                    startIndex = result.indexOf("(");
+//                    colStr = result.substring(startIndex+1, result.indexOf(")"));
+//                }
+                
+                String[] uniqColumnsArr = ConstructWhereClauseUtil.getUniqColumns(ConstructWhereClauseUtil.getStuffInsideBrackets(result));
+                if(uniqColumnsArr != null && uniqColumnsArr.length != 0)
+                	uniqCols.addAll(Arrays.asList(uniqColumnsArr));
             }
             
             // parse the info string and create the query and param types
@@ -180,7 +183,7 @@ public class QueryCache {
                 i = 0;
                 queryBuffer.append(" WHERE ");
                 for(Map.Entry<String, String> kv : whereParams.entrySet()) {
-                    if (i != 0 && i != whereParams.size()) {
+                    if (i > 0 && i < whereParams.size()) {
                         queryBuffer.append(" AND ");
                     }
                     queryBuffer.append((kv.getKey() + " = " + addParam(numParamTypes+1)));
