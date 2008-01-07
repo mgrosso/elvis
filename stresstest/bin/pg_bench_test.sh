@@ -47,8 +47,19 @@ fi
 MAINCLASS=com.netblue.bruce.Main
 PGBENCH_TABLES="accounts branches history tellers pgbench_test_heartbeat"
 TABLEREGEX='^(accounts|branches|history|tellers|pgbench_test_heartbeat)$'
-NODE_NUMBERS="0 1 2 3 4 5"
-SCALEFACTOR=2
+
+if [ -z $NODE_NUMBERS ] ; then
+    NODE_NUMBERS="0 1 2 3 4 5"
+fi
+if [ -z $PGBENCH_CLIENTS ] ; then
+    PGBENCH_CLIENTS=8
+fi
+if [ -z $PGBENCH_SCALEFACTOR ] ; then
+    PGBENCH_SCALEFACTOR=4
+fi
+if [ -z $PGBENCH_TRANSACTIONS ] ; then
+    PGBENCH_TRANSACTIONS=1000
+fi
 #TOPOLOGY="0:0,1,2,3,4,5"
 
 export DIGIT
@@ -266,7 +277,7 @@ function wait_for_heartbeat(){
         if [ $? -eq 0 ] ; then 
             break
         fi
-        sleep 1;
+        sleep 10
     done
 }
 
