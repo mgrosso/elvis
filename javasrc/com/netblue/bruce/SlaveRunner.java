@@ -48,13 +48,18 @@ import javax.sql.DataSource;
  */
 public class SlaveRunner implements Runnable
 {
-    public SlaveRunner(final DataSource masterDataSource, final Cluster cluster, final Node node)
-    {
+    public SlaveRunner(final DataSource masterDataSource, final Cluster cluster, final Node node){
         this.node = node;
         this.cluster = cluster;
         this.masterDataSource = masterDataSource;
-        properties = new BruceProperties();
+        // very important that we only ever initialize the query cache once.
+        sleepTime=NEXT_SNAPSHOT_UNAVAILABLE_SLEEP_DEFAULT;
+        errorSleepTime=ERROR_SLEEP_DEFAULT;
+        queryCache = new QueryCache();
+    }
 
+    private boolean init(){
+        properties = new BruceProperties();
         // Get our query strings
         selectLastSnapshotQuery = properties.getProperty(SNAPSHOT_STATUS_SELECT_KEY, SNAPSHOT_STATUS_SELECT_DEFAULT);
         updateLastSnapshotQuery = properties.getProperty(SNAPSHOT_STATUS_UPDATE_KEY, SNAPSHOT_STATUS_UPDATE_DEFAULT);
@@ -64,6 +69,7 @@ public class SlaveRunner implements Runnable
         normalModeQuery = properties.getProperty(NORMALMODE_QUERY_ID_KEY, NORMALMODE_QUERY_ID_DEFAULT);
 	slaveTableIDQuery = properties.getProperty(SLAVE_TABLE_ID_KEY,SLAVE_TABLE_ID_DEFAULT);
         sleepTime = properties.getIntProperty(NEXT_SNAPSHOT_UNAVAILABLE_SLEEP_KEY, NEXT_SNAPSHOT_UNAVAILABLE_SLEEP_DEFAULT);
+        errorSleepTime = properties.getIntProperty(ERROR_SLEEP_KEY, ERROR_SLEEP_DEFAULT);
 
         // Setup our data source
         dataSource.setDriverClassName(properties.getProperty("bruce.jdbcDriverName", "org.postgresql.Driver"));
@@ -86,15 +92,13 @@ public class SlaveRunner implements Runnable
             initializeDatabaseResources();
 
             // Now get the last snapshot processed from the DB
-            lastProcessedSnapshot = queryForLastProcessedSnapshot();
-            if (getLastProcessedSnapshot() == null)
-            {
+            setLastProcessedSnapshot();
+            if (getLastProcessedSnapshot() == null) {
                 LOGGER.error("Cannot replicate slave node.  No starting point has been identified.  Please ensure that " +
                         "the slavesnapshotstatus table on " + this.node.getUri() + " has been properly initialized.");
+                return false;
             }
-
-            // initialize the query cache
-            queryCache = new QueryCache();
+            return true;
         }
         catch (SQLException e)
         {
@@ -103,6 +107,7 @@ public class SlaveRunner implements Runnable
                     node.getName(), node.getUri());
             LOGGER.error(errorMessage, e);
         }
+        return false;
     }
 
     /**
@@ -188,7 +193,7 @@ public class SlaveRunner implements Runnable
         updateLastSnapshotStatement.close();
         slaveTransactionIdStatement.close();
         applyTransactionsStatement.close();
-	slaveTableIDStatement.close();
+        slaveTableIDStatement.close();
     }
 
     /**
@@ -210,27 +215,39 @@ public class SlaveRunner implements Runnable
 
     public void run()
     {
-        while (!shutdownRequested)
-        {
-            if (getLastProcessedSnapshot() != null)
-            {
-                try
-                {
-                    final Snapshot nextSnapshot = getNextSnapshot();
-                    if (nextSnapshot != null)
-                    {
-                        processSnapshot(nextSnapshot);
+        while (!shutdownRequested) {
+            try{
+                if(init()==true){
+                    while (!shutdownRequested) {
+                        doOneIteration();
+                        doSleep(sleepTime);
                     }
-                    Thread.sleep(sleepTime);
                 }
-                catch (InterruptedException e)
-                {
-                    LOGGER.error("Slave interrupted", e);
-                }
+            }catch (Exception e) {
+                LOGGER.error("SlaveRunner caught exception at toplevel. will sleep,init(),retry:", e);
             }
+            doSleep(errorSleepTime);
         }
         releaseDatabaseResources();
         LOGGER.info(node.getName() + " shutdown complete.");
+    }
+
+    public void doSleep(int msec){
+        try{
+            Thread.sleep(msec);
+        }catch (InterruptedException ie) {
+            LOGGER.warn("Slave sleep interrupted, ignoring.", ie);
+        }
+    }
+
+    private void doOneIteration(){
+        LOGGER.trace("Last processed snapshot: " + lastProcessedSnapshot);
+        if (getLastProcessedSnapshot() != null) {
+            final Snapshot nextSnapshot = getNextSnapshot();
+            if (nextSnapshot != null){
+                processSnapshot(nextSnapshot);
+            }
+        }
     }
 
     /**
@@ -289,23 +306,19 @@ public class SlaveRunner implements Runnable
      * @return the last known <code>Snapshot</code> to have been processed by this node or null if this node has not
      *         processed any <code>Snapshot</code>s.  Not private simply for testing puposes.
      */
-    protected Snapshot queryForLastProcessedSnapshot() throws SQLException
-    {
-        Snapshot snapshot = null;
+    protected void setLastProcessedSnapshot() throws SQLException {
         Connection connection = getConnection();
         selectLastSnapshotStatement.setLong(1, this.cluster.getId());
         // If nothing is in the result set, then our lastProcessedSnapshot is null
         final ResultSet resultSet = selectLastSnapshotStatement.executeQuery();
-        if (resultSet.next())
-        {
-            snapshot = new Snapshot(new TransactionID(resultSet.getLong("master_current_xaction")),
+        if (resultSet.next()) {
+            lastProcessedSnapshot = new Snapshot(new TransactionID(resultSet.getLong("master_current_xaction")),
                                     new TransactionID(resultSet.getLong("master_min_xaction")),
                                     new TransactionID(resultSet.getLong("master_max_xaction")),
                                     resultSet.getString("master_outstanding_xactions"));
         }
         resultSet.close();
         connection.rollback();
-        return snapshot;
     }
 
     /**
@@ -506,19 +519,21 @@ public class SlaveRunner implements Runnable
     private PreparedStatement slaveTableIDStatement;
     private HashSet<String> slaveTables ;
 
+    private int sleepTime;
+    private int errorSleepTime;
+    private String selectLastSnapshotQuery;
+    private String updateLastSnapshotQuery;
+    private String slaveTransactionIdQuery;
+    private String applyTransactionsQuery;
+    private String daemonModeQuery;
+    private String normalModeQuery;
+    private String slaveTableIDQuery;
+    private BasicDataSource dataSource = new BasicDataSource();
+
     // --------- Constants ------------------- //
-    private final int sleepTime;
     private final Node node;
     private final Cluster cluster;
-    private final String selectLastSnapshotQuery;
-    private final String updateLastSnapshotQuery;
-    private final String slaveTransactionIdQuery;
-    private final String applyTransactionsQuery;
-    private final String daemonModeQuery;
-    private final String normalModeQuery;
-    private final String slaveTableIDQuery;
     private final DataSource masterDataSource;
-    private final BasicDataSource dataSource = new BasicDataSource();
 
     // --------- Static Constants ------------ //
     private static final Logger LOGGER = Logger.getLogger(SlaveRunner.class);
@@ -605,6 +620,10 @@ public class SlaveRunner implements Runnable
     private static final String NEXT_SNAPSHOT_UNAVAILABLE_SLEEP_KEY = "bruce.nextSnapshotUnavailableSleep";
     // This default value may need some tuning. 100ms seemed too small, 1s might be right
     private static int NEXT_SNAPSHOT_UNAVAILABLE_SLEEP_DEFAULT = 1000;
+
+    private static final String ERROR_SLEEP_KEY = "bruce.slaveErrorSleep";
+    // This default value may need some tuning. 100ms seemed too small, 1s might be right
+    private static int ERROR_SLEEP_DEFAULT = 30000;
     
     private QueryCache queryCache;
 }
