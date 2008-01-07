@@ -154,7 +154,7 @@
     <!-- Jar package                                     -->
     <!-- =============================================== -->
     <target name="jar" description="makes jar" depends="compile, compile-test, make-hibernate-config">
-        <antcall target="schemaexport"/>
+        <!-- <antcall target="schemaexport"/> -->
         <mkdir dir="${dir.release}"/>
         <jar destfile="${dir.release}/${jarfilename}" basedir="${dir.classes}">
             <manifest>
@@ -293,7 +293,7 @@
 
         <!-- Load the test schema and setup system properties for test data -->
         <echo message="Loading test schema"/>
-        <antcall target="schemaexport"/>
+        <!-- <antcall target="schemaexport"/> -->
         <mkdir dir="${dir.junit.output}/xml"/>
         <property name="dir.test.data" location="test/data"/>
         <property name="dir.schema" location="schema"/>
