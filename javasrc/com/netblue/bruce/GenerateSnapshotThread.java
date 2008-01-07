@@ -51,8 +51,8 @@ public class GenerateSnapshotThread implements Runnable {
 
     public void run() {
 	while (!shutdownRequested) {
+            boolean error = true ;
 	    try {
-		sqlError=false;		
 		Connection c = masterDS.getConnection();
 		try { // Make sure connection gets closed
 		    c.setAutoCommit(true);
@@ -60,14 +60,13 @@ public class GenerateSnapshotThread implements Runnable {
 		} finally {
 		    c.close();
 		}
-	    } catch (SQLException e) {
-		sqlError=true;
-		logger.error("SQLException in Generate Snapshot Thread. Waiting retryTimewait:"+
-			     retryTimewait+" before next attempt",
-			     e);
+		error=false;		
+	    } catch (Exception e) {
+		logger.error("Exception in Generate Snapshot Thread. Waiting retryTimewait:"+
+			     retryTimewait+" before next attempt", e);
 	    }
 	    try {
-		if (sqlError) {
+		if (error) {
 		    Thread.sleep(retryTimewait);
 		} else {
 		    Thread.sleep(snapshotFrequency);
@@ -85,7 +84,6 @@ public class GenerateSnapshotThread implements Runnable {
     private int snapshotFrequency;
     private int retryTimewait;
     private boolean shutdownRequested = false;
-    private boolean sqlError = false;
 
     //
     // Properties that drive actions for this thread
