@@ -277,10 +277,11 @@ function start_replication (){
     set_uhp $MASTER_NODE
     LOG=$LOGS/${CLUSTER_NAME}-${TESTUSER}-daemon.err
     LOG4JLOG=$LOGS/${CLUSTER_NAME}-${TESTUSER}-daemon.log
-    cat bin/log4j.properties >$BASE/log4j-${CLUSTER_NAME}.properties
-    echo "log4j.appender.R.File=$LOG4JLOG" >>$BASE/log4j-${CLUSTER_NAME}.properties
+    LOG4JPROP=$BASE/log4j-${CLUSTER_NAME}.properties
+    cat bin/log4j.properties >$LOG4JPROP
+    echo "log4j.appender.R.File=$LOG4JLOG" >>$LOG4JPROP
     echo >$LOG
-    nohup $RUN_JAVA $JAVAOPTS -Dlog4j.configuration=log4j-${CLUSTER_NAME}.properties $BRUCE_OPTS -classpath $BRUCEJAR:$CLASSPATH $MAINCLASS ${CLUSTER_NAME} >$LOG 2>&1 &
+    nohup $RUN_JAVA $JAVAOPTS -Dlog4j.configuration=$LOG4JPROP $BRUCE_OPTS -classpath $BRUCEJAR:$CLASSPATH $MAINCLASS ${CLUSTER_NAME} >$LOG 2>&1 &
     echo $! >${LOGS}/${CLUSTER_NAME}-bruce.pid
 }
 
