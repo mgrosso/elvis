@@ -16,18 +16,32 @@ if [ -z $BASE ] ; then
     BASE=elvis-pgbench-test
 fi
 
+if [ -z $LOGS ] ; then
+    LOGS=$BASE/logs/
+fi
+
 
 if [ -z $TESTUSER ] ; then
     TESTUSER=bruce
 fi
-if [ -z $CLUSTER ] ; then 
-    CLUSTER=pg_bench_replication_test
+if [ -z $CLUSTER_NAME ] ; then 
+    CLUSTER_NAME=pg_bench_replication_test
 fi
 
+#see parse_topology() below
+if [ -z $TOPOLOGY ] ; then 
+    TOPOLOGY=0,1,3,4:1,2:2,5
+fi
+ALL_CLUSTERS=$( echo $TOPOLOGY|tr ':' ' ' )
+ALL_NODE_NUMBERS=$(  echo $TOPOLOGY|tr ':,' '  ' | xargs -n 1 echo | sort -u )
+ROOT_NODE=$( echo $TOPOLOGY|tr ':,' '  ' | xargs -n 1 echo | head -1 )
 
 if [ ! -z $BRUCE_CLASSPATH ] ; then
     CLASSPATH=$BRUCE_CLASSPATH
 else
+    if [ -z $LIB_DIR ] ; then
+        LIB_DIR=lib
+    fi
     for JAR in `find $LIB_DIR -name '*.jar'` ; do
         CLASSPATH=$CLASSPATH:$JAR
     done
@@ -48,26 +62,19 @@ MAINCLASS=com.netblue.bruce.Main
 PGBENCH_TABLES="accounts branches history tellers pgbench_test_heartbeat"
 TABLEREGEX='^(accounts|branches|history|tellers|pgbench_test_heartbeat)$'
 
-if [ -z $NODE_NUMBERS ] ; then
-    NODE_NUMBERS="0 1 2 3 4 5"
-fi
 if [ -z $PGBENCH_CLIENTS ] ; then
-    PGBENCH_CLIENTS=8
+    PGBENCH_CLIENTS=3
 fi
 if [ -z $PGBENCH_SCALEFACTOR ] ; then
-    PGBENCH_SCALEFACTOR=4
+    PGBENCH_SCALEFACTOR=6
 fi
 if [ -z $PGBENCH_TRANSACTIONS ] ; then
     PGBENCH_TRANSACTIONS=1000
 fi
-#TOPOLOGY="0:0,1,2,3,4,5"
 
-export DIGIT
-export PG_DATA
-export PORT
-export DB
-export UHP
-export DBURL
+export DIGIT PG_DATA PORT DB UHP DBURL
+export TOPOLOGY CLUSTER_TOPOLOGY NODE_NUMBERS MASTER_NODE SLAVE_NODES CLUSTER_NAME
+export ALL_CLUSTERS ALL_NODE_NUMBERS ROOT_NODE
 
 function puke(){
     echo $@
@@ -85,6 +92,45 @@ function do_or_puke (){
 function maketop(){
     rm -rf $BASE
     mkdir -p $BASE
+    mkdir -p $BASE/logs/
+}
+
+function parse_topology(){
+    CLUSTER_TOPOLOGY=$1
+    NODE_NUMBERS=$(echo $CLUSTER_TOPOLOGY|tr ',' ' ' )
+    MASTER_NODE=$(echo $CLUSTER_TOPOLOGY|cut -d ',' -f 1)
+    local NODE_COUNT=$(echo $NODE_NUMBERS|xargs -n 1 echo | wc -l )
+    local SLAVE_COUNT=$((NODE_COUNT-1))
+    SLAVE_NODES=$(echo $NODE_NUMBERS|xargs -n 1 echo | tail -n ${SLAVE_COUNT})
+    CLUSTER_NAME=cluster_${MASTER_NODE}
+}
+
+function foreach_cluster (){
+    FUNC=$1
+    shift
+    for CLUSTER in $ALL_CLUSTERS ; do 
+        $FUNC $CLUSTER $@
+    done
+}
+
+function foreach_node (){
+    FUNC=$1
+    shift
+    for NODE in $ALL_NODE_NUMBERS ; do 
+        $FUNC $NODE $@
+    done
+}
+
+function set_uhp(){
+    DIGIT=$1
+    PG_DATA=$BASE/pg_data_$DIGIT
+    PORT=5432$DIGIT
+    DB=$TESTUSER
+    UHP="-U $TESTUSER -h localhost -p $PORT"
+    RUNPSQL="psql -e $UHP -d $DB -c "
+    RUNPSQLF="psql -e $UHP -d $DB -f "
+    DBURL="jdbc:postgresql://localhost:$PORT/$DB?user=$TESTUSER"
+    BRUCE_OPTS="-Dpid.file=bruce.pid -Dlog4j.configuration=${CLUSTER_SUFFIX}log4j.properties -Dpostgresql.db_name=${DB} -Dpostgresql.URL=${DBURL} -Dhibernate.connection.url=${DBURL} -Dhibernate.connection.username=${TESTUSER} -Dhibernate.dialect=org.hibernate.dialect.PostgreSQLDialect"
 }
 
 function stop_any_running_db (){
@@ -153,11 +199,13 @@ EOF
 }
 
 function make_schema (){
-    do_or_puke psql $UHP -e -f schema/replication-ddl.sql $DB >replication-ddl-${DIGIT}.out 2>&1
-    do_or_puke psql $UHP -e -f schema/cluster-ddl.sql $DB >cluster-ddl-${DIGIT}.out 2>&1
-    $RUNPSQL "create table pgbench_test_heartbeat ( id bigint primary key, t timestamp not null unique );" >create-table-${DIGIT}.out 2>&1 ||
+    do_or_puke psql $UHP -e -f schema/replication-ddl.sql $DB >$LOGS/replication-ddl-${DIGIT}.out 2>&1
+    do_or_puke psql $UHP -e -f schema/cluster-ddl.sql $DB >$LOGS/cluster-ddl-${DIGIT}.out 2>&1
+    $RUNPSQL "create table pgbench_test_heartbeat ( id bigint primary key, t timestamp not null unique );" >$LOGS/create-table-${DIGIT}.out 2>&1 ||
             puke "psql failed to create table ${TESTUSER}_heartbeat"
-    do_or_puke pgbench -i $UHP -d $DB -s $SCALEFACTOR
+    do_or_puke pgbench -i $UHP -d $DB -s $PGBENCH_SCALEFACTOR 
+    $RUNPSQL "alter table history add column id bigserial primary key;" >>$LOGS/create-table-${DIGIT}.out 2>&1 ||
+            puke "psql failed to create table ${TESTUSER}_heartbeat"
 }
 
 function makedb (){
@@ -165,22 +213,10 @@ function makedb (){
     do_or_puke mkdir -p $PG_DATA
     do_or_puke initdb -E utf8 -U $TESTUSER -D $PG_DATA
     edit_postgresql_conf
-    nohup pg_ctl -D $PG_DATA start >$PG_DATA.out 2>&1 &
+    nohup pg_ctl -D $PG_DATA start >$LOGS/pg.${DIGIT}.out 2>&1 &
     waitfordb
     do_or_puke createdb -E utf8 $UHP -O $TESTUSER $DB
     make_schema
-}
-
-function set_uhp(){
-    DIGIT=$1
-    PG_DATA=$BASE/pg_data_$DIGIT
-    PORT=5432$DIGIT
-    DB=$TESTUSER
-    UHP="-U $TESTUSER -h localhost -p $PORT"
-    RUNPSQL="psql -e $UHP -d $DB -c "
-    RUNPSQLF="psql -e $UHP -d $DB -f "
-    DBURL="jdbc:postgresql://localhost:$PORT/$DB?user=$TESTUSER"
-    BRUCE_OPTS="-Dpid.file=bruce.pid -Dlog4j.configuration=bin/log4j.properties -Dpostgresql.db_name=${DB} -Dpostgresql.URL=${DBURL} -Dhibernate.connection.url=${DBURL} -Dhibernate.connection.username=${TESTUSER} -Dhibernate.dialect=org.hibernate.dialect.PostgreSQLDialect"
 }
 
 function run_sql (){
@@ -190,80 +226,81 @@ function run_sql (){
 }
 
 function add_slave_triggers(){
+    set_uhp $1
     for TABLE in $PGBENCH_TABLES ; do
-        set_uhp $1
         $RUNPSQL "create trigger ${TABLE}_deny before insert or delete or update on $TABLE for each row execute procedure bruce.denyaccesstrigger();" ||
             puke "psql failed "
     done
 }
 
 function add_master_triggers(){
+    set_uhp $1
     for TABLE in $PGBENCH_TABLES ; do
-        set_uhp $1
         $RUNPSQL "create trigger ${TABLE}_tx after insert or delete or update on $TABLE for each row execute procedure bruce.logtransactiontrigger();" ||
             puke "psql failed "
     done
 }
 
 function setup_cluster(){
+    parse_topology $1
     for N in $NODE_NUMBERS ; do
         set_uhp $N
         URI=$DBURL
-        set_uhp 0
+        set_uhp $MASTER_NODE
         psql -e $UHP $DB  -c "insert into bruce.yf_node (id,available,includetable,name,uri) values ($N,true,'$TABLEREGEX', 'node_$N','$URI');"  ||
             puke "psql failed "
     done
-    set_uhp 0
-    $RUNPSQL "insert into bruce.yf_cluster (id,name,master_node_id) values (0,'$CLUSTER',0);" ||
+    #we use $MASTER_NODE as the cluster id
+    $RUNPSQL "insert into bruce.yf_cluster (id,name,master_node_id) values ($MASTER_NODE,'$CLUSTER_NAME',$MASTER_NODE);" ||
         puke "psql failed "
     for N in $NODE_NUMBERS ; do
-        set_uhp $N
-        URI=$DBURL
-        set_uhp 0
-        psql -e $UHP $DB  -c "insert into bruce.node_cluster (node_id,cluster_id) values ($N,0);"  ||
+        psql -e $UHP $DB  -c "insert into bruce.node_cluster (node_id,cluster_id) values ($N,$MASTER_NODE);"  ||
             puke "psql failed "
     done
 }
 
 function distribute_snapshot(){
-    set_uhp 0
+    parse_topology $1
+    set_uhp $MASTER_NODE
     $RUNPSQL "select bruce.logsnapshot();" || puke "psql failed "
-    psql -q -t $UHP -d $DB -c "select 'insert into bruce.slavesnapshotstatus (clusterid,slave_xaction,master_current_xaction,master_min_xaction,master_max_xaction,master_outstanding_xactions) values (0,0,' || current_xaction || ',' || min_xaction || ',' || max_xaction || ',' || ' \\'' || outstanding_xactions || ' \\'' || ');' from bruce.snapshotlog_1 order by current_xaction limit 1;" \
+    psql -q -t $UHP -d $DB -c "select 'insert into bruce.slavesnapshotstatus (clusterid,slave_xaction,master_current_xaction,master_min_xaction,master_max_xaction,master_outstanding_xactions) values ($MASTER_NODE ,0,' || current_xaction || ',' || min_xaction || ',' || max_xaction || ',' || ' \\'' || outstanding_xactions || ' \\'' || ');' from bruce.snapshotlog_1 order by current_xaction limit 1;" \
         -o slavesnapshot.sql   || puke "psql $UHP failed to create snapshot sql"
-    for N in $NODE_NUMBERS ; do
+    for N in $SLAVE_NODES ; do
         set_uhp $N
         $RUNPSQLF slavesnapshot.sql || puke "psql $UHP failed to run snapshotsql"
     done
 }
 
 function start_replication (){
-    set_uhp 0
-    echo >bruce.log
-    nohup $RUN_JAVA $JAVAOPTS $BRUCE_OPTS -classpath $BRUCEJAR:$CLASSPATH $MAINCLASS $CLUSTER >${TESTUSER}-daemon.err  2>&1 &
-    echo $! >bruce.pid
+    parse_topology $1
+    set_uhp $MASTER_NODE
+    LOG=$LOGS/${CLUSTER_NAME}-${TESTUSER}-daemon.err
+    echo >$LOG
+    nohup $RUN_JAVA $JAVAOPTS $BRUCE_OPTS -classpath $BRUCEJAR:$CLASSPATH $MAINCLASS ${CLUSTER_NAME} >$LOG 2>&1 &
+    echo $! >${LOGS}/${CLUSTER_NAME}-bruce.pid
 }
 
 function run_pgbench (){
-    set_uhp 0
-    pgbench $UHP -d $DB -t 100 -c $(($SCALEFACTOR*2)) >${TESTUSER}-pgbench.err  2>&1
+    set_uhp $ROOT_NODE
+    pgbench $UHP -d $DB -t $PGBENCH_TRANSACTIONS -c $PGBENCH_CLIENTS >$LOGS/${TESTUSER}-pgbench.err  2>&1
 }
 
 function insert_heartbeat (){
     ID=$1
-    set_uhp 0
+    set_uhp $ROOT_NODE
     $RUNPSQL "insert into pgbench_test_heartbeat (id,t) values ($ID,now());" || puke "psql failed "
 }
 
 function update_heartbeat (){
     ID=$1
     OLDID=$2
-    set_uhp 0
+    set_uhp $ROOT_NODE
     $RUNPSQL "update pgbench_test_heartbeat set id = $ID, t = now() where id = $OLDID ;" || puke "psql failed "
 }
 
 function delete_heartbeat (){
     ID=$1
-    set_uhp 0
+    set_uhp $ROOT_NODE
     $RUNPSQL "delete from pgbench_test_heartbeat where id = $ID;" || puke "psql failed "
 }
 
@@ -272,8 +309,8 @@ function wait_for_heartbeat(){
     ID=$2
     while : ; do
         echo >heartbeat.out
-        $RUNPSQL "select 'grep_this_buddy',id,t,now()-t from pgbench_test_heartbeat where id = $ID ;" -o heartbeat.out || puke "psql failed "
-        grep grep_this_buddy heartbeat.out
+        $RUNPSQL "select 'grep_this_buddy',id,t,now()-t from pgbench_test_heartbeat where id = $ID ;" -o $LOGS/heartbeat.out || puke "psql failed "
+        grep grep_this_buddy $LOGS/heartbeat.out
         if [ $? -eq 0 ] ; then 
             break
         fi
@@ -283,18 +320,19 @@ function wait_for_heartbeat(){
 
 function wait_for_all(){
     ID=$1
-    for N in $NODE_NUMBERS ; do 
-        wait_for_heartbeat $N $ID
-    done
+    foreach_node wait_for_heartbeat $ID
 }
 
 function add_triggers(){
-    add_master_triggers 0
-    add_slave_triggers 1
-    add_slave_triggers 2
-    add_slave_triggers 3
-    add_slave_triggers 4
-    add_slave_triggers 5
+    for NODE in $ALL_NODE_NUMBERS ; do 
+        add_master_triggers $NODE
+    done
+    for CLUSTER in $ALL_CLUSTERS ; do 
+        parse_topology $CLUSTER
+        for SLAVE in $SLAVE_NODES ; do
+            add_slave_triggers $SLAVE
+        done
+    done
 }
 
 function check_heartbeat(){
@@ -310,21 +348,24 @@ function check_heartbeat(){
     delete_heartbeat 1
 }
 
+
 stop_any_running_db 
 maketop
-for N in $NODE_NUMBERS ; do
-    makedb $N
-done
-setup_cluster
+foreach_node makedb
+foreach_cluster setup_cluster
 add_triggers
-distribute_snapshot
-start_replication
+foreach_cluster distribute_snapshot
+foreach_cluster start_replication
 check_heartbeat
 
+#benchmark starts here....
 insert_heartbeat 1
 wait_for_all 1
 run_pgbench
 insert_heartbeat 2
 wait_for_all 2
 
-#for N in 0 1 2 3 4 5 ; do psql -h localhost -p 5432${N} -U bruce -d bruce  -c "select sum(tbalance) from tellers; select sum(bbalance) from branches; select sum(abalance) from accounts;" ; done
+
+##for N in 0 1 2 3 4 5 ; do psql -h localhost -p 5432${N} -U bruce -d bruce  -c "select sum(tbalance) from tellers; select sum(bbalance) from branches; select sum(abalance) from accounts;" ; done
+
+#add_master_triggers 1
