@@ -320,8 +320,20 @@ public class SlaveRunner implements Runnable
         }
         final Snapshot nextSnapshot = getNextSnapshot();
         if (nextSnapshot != null){
+            LOGGER.trace("Last processed snapshot: " + lastProcessedSnapshot + " new snapshot: "+nextSnapshot );
+            logMem("before processing next snapshot");
             processSnapshot(nextSnapshot);
+            logMem("after processing next snapshot");
         }
+    }
+
+    private void logMem(String msg){
+        Runtime r=java.lang.getRuntime();
+        long max = r.maxMemory();
+        long free = r.freeMemory();
+        long total = r.totalMemory();
+        long used = total-free;
+        LOGGER.trace( "("+msg+") memory stats: max="+max+" free="+free+" total="+total+" used="+used);
     }
 
     /**
@@ -333,7 +345,6 @@ public class SlaveRunner implements Runnable
      */
     public Snapshot getLastProcessedSnapshot()
     {
-        LOGGER.trace("Last processed snapshot: " + lastProcessedSnapshot);
         return lastProcessedSnapshot;
     }
 
