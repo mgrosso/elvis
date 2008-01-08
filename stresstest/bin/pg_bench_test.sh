@@ -130,7 +130,7 @@ function set_uhp(){
     RUNPSQL="psql -e $UHP -d $DB -c "
     RUNPSQLF="psql -e $UHP -d $DB -f "
     DBURL="jdbc:postgresql://localhost:$PORT/$DB?user=$TESTUSER"
-    BRUCE_OPTS="-Dpid.file=bruce.pid -Dlog4j.configuration=log4j.properties -Dlog4j.appender.R.File=bruce-${CLUSTER_NAME}.log -Dpostgresql.db_name=${DB} -Dpostgresql.URL=${DBURL} -Dhibernate.connection.url=${DBURL} -Dhibernate.connection.username=${TESTUSER} -Dhibernate.dialect=org.hibernate.dialect.PostgreSQLDialect"
+    BRUCE_OPTS="-Dpid.file=bruce.pid -Dpostgresql.db_name=${DB} -Dpostgresql.URL=${DBURL} -Dhibernate.connection.url=${DBURL} -Dhibernate.connection.username=${TESTUSER} -Dhibernate.dialect=org.hibernate.dialect.PostgreSQLDialect"
 
 }
 
@@ -190,7 +190,7 @@ function edit_postgresql_conf(){
     fsync = off
     log_duration = on
     log_line_prefix = '%u d=%d %r p%p t=%m ses=%c[%l] tx=%x '           # Special values:
-    log_statement = 'none'          # none, mod, ddl, all
+    log_statement = 'all'          # none, mod, ddl, all
 EOF
 
     if [ $? -ne 0 ] ; then
@@ -276,8 +276,11 @@ function start_replication (){
     parse_topology $1
     set_uhp $MASTER_NODE
     LOG=$LOGS/${CLUSTER_NAME}-${TESTUSER}-daemon.err
+    LOG4JLOG=$LOGS/${CLUSTER_NAME}-${TESTUSER}-daemon.log
+    cat bin/log4j.properties >$BASE/log4j-${CLUSTER_NAME}.properties
+    echo "log4j.appender.R.File=$LOG4JLOG" >>$BASE/log4j-${CLUSTER_NAME}.properties
     echo >$LOG
-    nohup $RUN_JAVA $JAVAOPTS $BRUCE_OPTS -classpath $BRUCEJAR:$CLASSPATH $MAINCLASS ${CLUSTER_NAME} >$LOG 2>&1 &
+    nohup $RUN_JAVA $JAVAOPTS -Dlog4j.configuration=log4j-${CLUSTER_NAME}.properties $BRUCE_OPTS -classpath $BRUCEJAR:$CLASSPATH $MAINCLASS ${CLUSTER_NAME} >$LOG 2>&1 &
     echo $! >${LOGS}/${CLUSTER_NAME}-bruce.pid
 }
 
