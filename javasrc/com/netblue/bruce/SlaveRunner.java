@@ -52,9 +52,9 @@ public class SlaveRunner implements Runnable
         this.node = node;
         this.cluster = cluster;
         this.masterDataSource = masterDataSource;
-        // very important that we only ever initialize the query cache once.
         sleepTime=NEXT_SNAPSHOT_UNAVAILABLE_SLEEP_DEFAULT;
         errorSleepTime=ERROR_SLEEP_DEFAULT;
+        // very important that we only ever initialize the query cache once.
         queryCache = new QueryCache();
     }
 
@@ -70,7 +70,10 @@ public class SlaveRunner implements Runnable
 	slaveTableIDQuery = properties.getProperty(SLAVE_TABLE_ID_KEY,SLAVE_TABLE_ID_DEFAULT);
         sleepTime = properties.getIntProperty(NEXT_SNAPSHOT_UNAVAILABLE_SLEEP_KEY, NEXT_SNAPSHOT_UNAVAILABLE_SLEEP_DEFAULT);
         errorSleepTime = properties.getIntProperty(ERROR_SLEEP_KEY, ERROR_SLEEP_DEFAULT);
+        transactionLogFetchSize  = properties.getIntProperty( TRANSACTIONLOG_FETCH_SIZE_KEY, TRANSACTIONLOG_FETCH_SIZE_DEFAULT );
 
+        plusNSnapshotQuery = properties.getProperty( PLUSN_SNAPSHOT_QUERY_KEY, PLUSN_SNAPSHOT_QUERY_DEFAULT);
+        getOutstandingTransactionsQuery = properties.getProperty(GET_OUTSTANDING_TRANSACTIONS_KEY,GET_OUTSTANDING_TRANSACTIONS_DEFAULT);
         // Setup our data source
         dataSource.setDriverClassName(properties.getProperty("bruce.jdbcDriverName", "org.postgresql.Driver"));
         dataSource.setValidationQuery(properties.getProperty("bruce.poolQuery", "select now()"));
@@ -90,6 +93,7 @@ public class SlaveRunner implements Runnable
 
             // creates a connection and all of our prepared statements
             initializeDatabaseResources();
+            initializeMasterDatabaseResources();
 
             // Now get the last snapshot processed from the DB
             setLastProcessedSnapshot();
@@ -127,6 +131,22 @@ public class SlaveRunner implements Runnable
     }
 
     /**
+     * Gets the master DB connection, and ensures that all {@link java.sql.PreparedStatement}s we have are valid.
+     *
+     * @return
+     *
+     * @throws SQLException
+     */
+    private Connection getMasterConnection() throws SQLException
+    {
+        if (!hasValidMasterConnection())
+        {
+            initializeMasterDatabaseResources();
+        }
+        return masterConnection;
+    }
+
+    /**
      * Checks the state of our connection
      *
      * @return true if we have a valid, open connection
@@ -136,6 +156,24 @@ public class SlaveRunner implements Runnable
         try
         {
             return (theOneConnection != null && !theOneConnection.isClosed());
+        }
+        catch (SQLException e)
+        {
+            LOGGER.error(e);
+        }
+        return false;
+    }
+
+    /**
+     * Checks the state of our connection
+     *
+     * @return true if we have a valid, open connection
+     */
+    private boolean hasValidMasterConnection()
+    {
+        try
+        {
+            return (masterConnection != null && !masterConnection.isClosed());
         }
         catch (SQLException e)
         {
@@ -169,31 +207,52 @@ public class SlaveRunner implements Runnable
     }
 
     /**
+     * Opens a connection to the database, sets our internal instance to that connection, and initializes all
+     * PreparedStatments we will use.
+     *
+     * @throws SQLException
+     */
+    private void initializeMasterDatabaseResources() throws SQLException
+    {
+        masterConnection = masterDataSource.getConnection();
+        masterConnection.setAutoCommit(false);
+        //masterConnection.setTransactionIsolation(Connection.TRANSACTION_REPEATABLE_READ);
+        prepareMasterStatements();
+    }
+
+    /**
      * Releases all database resources used by this slave.  Used during shutdown to cleanup after ourselves.
      */
-    private void releaseDatabaseResources()
-    {
-        try
-        {
+    private void releaseDatabaseResources() {
+        try {
             closeStatements();
-            if (hasValidConnection())
-            {
+            if (hasValidConnection()) {
                 getConnection().close();
             }
+        } catch (Exception e) {
+            LOGGER.error("Unable to close slave database resources.", e);
         }
-        catch (SQLException e)
-        {
-            LOGGER.error("Unable to close database resources.", e);
+        try {
+            closeMasterStatements();
+            if (hasValidMasterConnection()) {
+                getMasterConnection().close();
+            }
+        } catch (Exception e) {
+            LOGGER.error("Unable to close master database resources.", e);
         }
     }
 
-    private void closeStatements() throws SQLException
-    {
+    private void closeStatements() throws SQLException {
         selectLastSnapshotStatement.close();
         updateLastSnapshotStatement.close();
         slaveTransactionIdStatement.close();
         applyTransactionsStatement.close();
         slaveTableIDStatement.close();
+    }
+
+    private void closeMasterStatements() throws SQLException {
+        plusNSnapshotStatement.close();
+        getOutstandingTransactionsStatement.close();
     }
 
     /**
@@ -202,8 +261,7 @@ public class SlaveRunner implements Runnable
      *
      * @throws SQLException
      */
-    private void prepareStatements() throws SQLException
-    {
+    private void prepareStatements() throws SQLException {
         Connection connection = getConnection();
         selectLastSnapshotStatement = connection.prepareStatement(selectLastSnapshotQuery);
         updateLastSnapshotStatement = connection.prepareStatement(updateLastSnapshotQuery);
@@ -213,19 +271,34 @@ public class SlaveRunner implements Runnable
         connection.commit();
     }
 
+    /**
+     * Prepares all of the master database {@link java.sql.PreparedStatement}s we need for this class.  Assumes a valid and open {@link
+     * #masterConnection} with auto commit off.
+     *
+     * @throws SQLException
+     */
+    private void prepareMasterStatements() throws SQLException {
+        Connection connection = getMasterConnection();
+        plusNSnapshotStatement = connection.prepareStatement(plusNSnapshotQuery);
+        getOutstandingTransactionsStatement = connection.prepareStatement(getOutstandingTransactionsQuery);
+        connection.commit();
+    }
+
     public void run()
     {
         while (!shutdownRequested) {
             try{
                 if(init()==true){
                     while (!shutdownRequested) {
-                        doOneIteration();
+                        doWork();
                         doSleep(sleepTime);
                     }
                 }
             }catch (Exception e) {
                 LOGGER.error("SlaveRunner caught exception at toplevel. will sleep,init(),retry:", e);
             }
+            //we are here because init() failed or because of exception.
+            releaseDatabaseResources();
             doSleep(errorSleepTime);
         }
         releaseDatabaseResources();
@@ -240,13 +313,14 @@ public class SlaveRunner implements Runnable
         }
     }
 
-    private void doOneIteration(){
+    private void doWork()throws SQLException {
         LOGGER.trace("Last processed snapshot: " + lastProcessedSnapshot);
-        if (getLastProcessedSnapshot() != null) {
-            final Snapshot nextSnapshot = getNextSnapshot();
-            if (nextSnapshot != null){
-                processSnapshot(nextSnapshot);
-            }
+        if (getLastProcessedSnapshot() == null) {
+            LOGGER.error("doWork(): BUG: getLastProcessedSnapshot() returns null, which implies init() failed, but we should never get here if init failed.");
+        }
+        final Snapshot nextSnapshot = getNextSnapshot();
+        if (nextSnapshot != null){
+            processSnapshot(nextSnapshot);
         }
     }
 
@@ -306,7 +380,7 @@ public class SlaveRunner implements Runnable
      * @return the last known <code>Snapshot</code> to have been processed by this node or null if this node has not
      *         processed any <code>Snapshot</code>s.  Not private simply for testing puposes.
      */
-    protected void setLastProcessedSnapshot() throws SQLException {
+    private void setLastProcessedSnapshot() throws SQLException {
         Connection connection = getConnection();
         selectLastSnapshotStatement.setLong(1, this.cluster.getId());
         // If nothing is in the result set, then our lastProcessedSnapshot is null
@@ -322,71 +396,120 @@ public class SlaveRunner implements Runnable
     }
 
     /**
+     * this method exists to support the testProcessSnapshotUpdatesStatus() test in our test class.
+     *
+     * @return the last known <code>Snapshot</code> to have been processed by this node or null if this node has not
+     *         processed any <code>Snapshot</code>s.  Not private simply for testing puposes.
+     */
+    protected Snapshot queryForLastProcessedSnapshot() throws SQLException {
+        setLastProcessedSnapshot();
+        return lastProcessedSnapshot;
+    }
+
+    /**
      * Applies all outstanding {@link com.netblue.bruce.Change}s to this slave
      *
      * @param snapshot A {@link com.netblue.bruce.Snapshot} containing the latest master snapshot.
      */
-    private void applyAllChangesForTransaction2(final Snapshot snapshot) throws SQLException
-    {
-        // This method is part of a larger transaction.  We don't validate/get the connection here,
-        // because if the connection becomes invalid as a part of that larger transaction, we're screwed
-        // anyway and we don't want to create a new connection for just part of the transaction
+    private void applyAllChangesForTransaction2(final Snapshot snapshot) throws SQLException {
+        // This method is part of a larger transaction.  We don't validate/get
+        // the connection here, because if the connection becomes invalid as a
+        // part of that larger transaction, we're screwed anyway and we don't
+        // want to create a new connection for just part of the transaction
         if (snapshot == null) {
             LOGGER.trace("Latest Master snapshot is null");
-        } else {
-            LOGGER.trace("Applying transactions: ");
-            LOGGER.trace("Getting master database connection");
-            Connection masterC = masterDataSource.getConnection();
-            try { // prevent connection pool leakage
-                masterC.setAutoCommit(false);
-                PreparedStatement masterPS = 
-                    masterC.prepareStatement(properties.getProperty(GET_OUTSTANDING_TRANSACTIONS_KEY,
-                                            GET_OUTSTANDING_TRANSACTIONS_DEFAULT));
-                masterPS.setFetchSize(50);
-                masterPS.setLong(1,lastProcessedSnapshot.getMinXid().getLong());
-                masterPS.setLong(2,snapshot.getMaxXid().getLong());
-                ResultSet masterRS = masterPS.executeQuery();
-                HashSet<String> slaveTables = getSlaveTables();
-                LOGGER.trace("Processing changes");
-                while (masterRS.next()) {
-                    TransactionID tid = new TransactionID(masterRS.getLong("xaction"));
-                    // Skip transactions not between snapshots
-                    if (lastProcessedSnapshot.transactionIDGE(tid) &&
-                    snapshot.transactionIDLT(tid)) {
-                    if (slaveTables.contains(masterRS.getString("tabname"))) {
-                        LOGGER.trace("Applying change."+
-                             " xid:"+masterRS.getLong("rowid")+
-                             " tid:"+tid+
-                             " tabname:"+masterRS.getString("tabname")+
-                             " cmdtype:"+masterRS.getString("cmdtype")+
-                             " info:"+masterRS.getString("info"));
-                        // call query cache
-                        QueryParams queryParams = queryCache.getQueryInfo(masterRS.getString("cmdtype"), masterRS.getString("tabname"), 
-                                                                          masterRS.getString("info"), masterC);
-                        applyTransactionsStatement.setInt(1, queryParams.getIndex());
-                        applyTransactionsStatement.setInt(2, queryParams.getNumParamTypes());
-                        applyTransactionsStatement.setString(3, queryParams.getQuery());
-                        applyTransactionsStatement.setString(4, queryParams.getParamTypeNames());
-                        applyTransactionsStatement.setString(5, queryParams.getParamInfoIndices());
-                        applyTransactionsStatement.setString(6, masterRS.getString("info"));
-                        applyTransactionsStatement.execute();
-                        LOGGER.trace("Change applied");
-                    } else {
-                        LOGGER.trace("NOT applying change. Table not replicated on slave."+
-                             " xid:"+masterRS.getLong("rowid")+
-                             " tid:"+tid+
-                             " tabname:"+masterRS.getString("tabname")+
-                             " cmdtype:"+masterRS.getString("cmdtype")+
-                             " info:"+masterRS.getString("info"));
-                    }
-                    } else {
-                    LOGGER.trace("Transaction not between snapshots. tid:"+tid+
-                             " lastslaveS:"+lastProcessedSnapshot+" masterS:"+snapshot);
-                    }
+            return;
+        } 
+
+        LOGGER.trace("getting transactions for snapshot with current xid: "
+                +snapshot.getCurrentXid());
+
+        Connection masterConnection = getMasterConnection();
+        getOutstandingTransactionsStatement.setFetchSize(transactionLogFetchSize);
+        getOutstandingTransactionsStatement.setLong(
+                1,lastProcessedSnapshot.getMinXid().getLong());
+        getOutstandingTransactionsStatement.setLong(
+                2,snapshot.getMaxXid().getLong());
+        ResultSet txrs = getOutstandingTransactionsStatement.executeQuery();
+
+        ArrayList<TransactionLogRow> txrows = new ArrayList<TransactionLogRow>(transactionLogFetchSize);
+        txrows=pullChanges( txrs, txrows, transactionLogFetchSize );
+        if(txrows.size()<transactionLogFetchSize){
+            //good, we can release master resources asap 
+            LOGGER.trace("release master db resources early.");
+            txrs.close();
+            masterConnection.rollback();
+            applyChanges(txrows,snapshot,masterConnection);
+        }else{
+            //we have a backlog of more than x rows, so we'll have to keep our
+            //master connection open while we update the child. this is to
+            //avoid having the memory size of the daemon need to be the sum of the 
+            //backlog size of all the slaves.
+            while(txrows.size()>0){
+                applyChanges(txrows,snapshot,masterConnection);
+                if(txrows.size()==transactionLogFetchSize){
+                    txrows=pullChanges( txrs, txrows, transactionLogFetchSize );
+                }else{
+                    break;
                 }
-            } finally {
-                masterC.close();
             }
+            LOGGER.trace("... and finally release master db resources.");
+            txrs.close();
+            masterConnection.rollback();
+        }
+    }
+
+    private ArrayList<TransactionLogRow> pullChanges(
+        ResultSet txrs, ArrayList<TransactionLogRow> txrows, int max )
+    throws SQLException {
+        int i=0;
+        txrows.clear();
+        while(txrs.next()){
+            txrows.add(new TransactionLogRow(txrs));
+            if( ++i == max ){ //more than or exactly max records were in resultset.
+                return txrows;
+            }
+        }
+        //less than max records were in resultset.
+        return txrows; 
+    }
+
+    private void applyChanges( 
+        ArrayList<TransactionLogRow> txrows, final Snapshot snapshot, Connection masterC ) 
+    throws SQLException {
+        HashSet<String> slaveTables = getSlaveTables();
+        LOGGER.trace("Processing changes for chunk of " +txrows.size());
+        for( TransactionLogRow tlr : txrows ){
+            TransactionID tid = tlr.getXaction();
+            // Skip transactions not between snapshots
+            if (!(lastProcessedSnapshot.transactionIDGE(tid)&&snapshot.transactionIDLT(tid))){
+                LOGGER.trace("skipping transaction not between snapshots. tid:"+tid+
+                     " lastslaveS:"+lastProcessedSnapshot+" masterS:"+snapshot);
+                continue;
+            }
+            String debug_detail = 
+                     " xid:"+tlr.getRowid()+
+                     " tid:"+tid+
+                     " tabname:"+tlr.getTabname()+
+                     " cmdtype:"+tlr.getCmdtype()+
+                     " info:"+tlr.getInfo() ;
+            if (!slaveTables.contains(tlr.getTabname())){
+                LOGGER.trace("NOT applying change. Table not replicated on slave."+debug_detail);
+                continue;
+            }
+            LOGGER.trace("Applying change."+debug_detail);
+            // call query cache
+            QueryParams queryParams = queryCache.getQueryInfo(
+                tlr.getCmdtype(),tlr.getTabname(),tlr.getInfo(), masterC );
+
+            applyTransactionsStatement.setInt(1, queryParams.getIndex());
+            applyTransactionsStatement.setInt(2, queryParams.getNumParamTypes());
+            applyTransactionsStatement.setString(3, queryParams.getQuery());
+            applyTransactionsStatement.setString(4, queryParams.getParamTypeNames());
+            applyTransactionsStatement.setString(5, queryParams.getParamInfoIndices());
+            applyTransactionsStatement.setString(6, tlr.getInfo());
+            applyTransactionsStatement.execute();
+            LOGGER.trace("Change applied");
         }
     }
 
@@ -396,46 +519,38 @@ public class SlaveRunner implements Runnable
      *
      * @return the next Snapshot when it becomes available
      */
-    private Snapshot getNextSnapshot() {
+    private Snapshot getNextSnapshot() throws SQLException {
         LOGGER.trace("Getting next snapshot");
 	Snapshot retVal = null;
         final Snapshot processedSnapshot = getLastProcessedSnapshot();	
-	try {
-	    Connection masterC = masterDataSource.getConnection();
-	    try {
-		PreparedStatement ps = masterC.prepareStatement(plusNSnapshotQuery);
-		ps.setLong(1,processedSnapshot.getCurrentXid().getLong());
-		ResultSet rs;
-		for (long l:new long[]{100000L, 50000L, 25000L, 10000L, 5000L, 2000L, 1000L,
-				       500L,250L,125L,100L,75L,50L,25L,10L,5L,4L,3L,2L,1L}) {
-		    LOGGER.trace("trying lastProcessedSnapshot +"+l);
-		    retVal = null;
-		    ps.setLong(2,l);
-		    ps.setLong(3,processedSnapshot.getMinXid().getLong());
-		    ps.setLong(4,processedSnapshot.getMinXid().getLong());
-		    ps.setLong(5,processedSnapshot.getMaxXid().getLong());
-		    rs=ps.executeQuery();
-		    if (rs.next()) {
-			retVal = new Snapshot(new TransactionID(rs.getLong("current_xaction")),
-					      new TransactionID(rs.getLong("min_xaction")),
-					      new TransactionID(rs.getLong("max_xaction")),
-					      rs.getString("outstanding_xactions"));
-			LOGGER.trace("Retrived "+retVal);
-			if (snapshotLT(processedSnapshot,retVal)) {
-			    break;
-			} else {
-			    LOGGER.trace("However, retrived snapshot less than lastProcessedSnapshot");
-			    retVal=null;
-			}
-		    } else {
-			LOGGER.trace("No snapshot >= lastProcessedSnapshot +"+l);
-		    }
-		}
-	    } finally { masterC.close(); }
-	} catch (SQLException e) {
-	    LOGGER.info("Can not obtain next Snapshot due to SQLException",e);
-	}
-	return retVal;
+        ResultSet rs;
+        for (long l:new long[]{100000L, 50000L, 25000L, 10000L, 5000L, 2000L, 1000L,
+                               500L,250L,125L,100L,75L,50L,25L,10L,5L,4L,3L,2L,1L}) {
+            LOGGER.trace("trying lastProcessedSnapshot +"+l);
+            retVal = null;
+            plusNSnapshotStatement.setLong(1,processedSnapshot.getCurrentXid().getLong());
+            plusNSnapshotStatement.setLong(2,l);
+            plusNSnapshotStatement.setLong(3,processedSnapshot.getMinXid().getLong());
+            plusNSnapshotStatement.setLong(4,processedSnapshot.getMinXid().getLong());
+            plusNSnapshotStatement.setLong(5,processedSnapshot.getMaxXid().getLong());
+            rs=plusNSnapshotStatement.executeQuery();
+            if (rs.next()) {
+                retVal = new Snapshot(new TransactionID(rs.getLong("current_xaction")),
+                                      new TransactionID(rs.getLong("min_xaction")),
+                                      new TransactionID(rs.getLong("max_xaction")),
+                                      rs.getString("outstanding_xactions"));
+                LOGGER.trace("Retrived "+retVal);
+                if (snapshotLT(processedSnapshot,retVal)) {
+                    return retVal;
+                } else {
+                    LOGGER.trace("However, retrived snapshot less than lastProcessedSnapshot");
+                    retVal=null;
+                }
+            } else {
+                LOGGER.trace("No snapshot >= lastProcessedSnapshot +"+l);
+            }
+        }
+        return retVal;
     }
 
 
@@ -495,13 +610,16 @@ public class SlaveRunner implements Runnable
     }
 
     private HashSet<String> getSlaveTables() throws SQLException {
-        if( slaveTables != null ){
+        if( slaveTables != null && slaveTables.size() > 0 ){
             return slaveTables;
         }
+        LOGGER.trace("fetching Slave Tables from database:");
 	slaveTables = new HashSet<String>();
 	ResultSet rs = slaveTableIDStatement.executeQuery();
 	while (rs.next()) {
-	    slaveTables.add(rs.getString("tablename"));
+            String table = rs.getString("tablename");
+	    slaveTables.add(table);
+            LOGGER.trace(table);
 	}
 	rs.close();
 	return slaveTables;
@@ -511,16 +629,20 @@ public class SlaveRunner implements Runnable
     private boolean shutdownRequested = false;
     private BruceProperties properties;
     private Connection theOneConnection;
+    private Connection masterConnection;
     private Snapshot lastProcessedSnapshot;
     private PreparedStatement selectLastSnapshotStatement;
     private PreparedStatement updateLastSnapshotStatement;
     private PreparedStatement slaveTransactionIdStatement;
     private PreparedStatement applyTransactionsStatement;
     private PreparedStatement slaveTableIDStatement;
+    private PreparedStatement plusNSnapshotStatement;
+    private PreparedStatement getOutstandingTransactionsStatement;
     private HashSet<String> slaveTables ;
 
     private int sleepTime;
     private int errorSleepTime;
+    private int transactionLogFetchSize;
     private String selectLastSnapshotQuery;
     private String updateLastSnapshotQuery;
     private String slaveTransactionIdQuery;
@@ -528,6 +650,8 @@ public class SlaveRunner implements Runnable
     private String daemonModeQuery;
     private String normalModeQuery;
     private String slaveTableIDQuery;
+    private String getOutstandingTransactionsQuery;
+    private String plusNSnapshotQuery;
     private BasicDataSource dataSource = new BasicDataSource();
 
     // --------- Constants ------------------- //
@@ -608,7 +732,8 @@ public class SlaveRunner implements Runnable
     private static final String GET_OUTSTANDING_TRANSACTIONS_DEFAULT =
 	"select * from bruce.transactionlog where xaction >= ? and xaction < ? order by rowid asc";
     
-    private static final String plusNSnapshotQuery =
+    private static final String PLUSN_SNAPSHOT_QUERY_KEY = "bruce.slave.plusNSnapshotQuery" ;
+    private static final String PLUSN_SNAPSHOT_QUERY_DEFAULT =
 	"select * from bruce.snapshotlog "+
 	// 4,294,967,296 == 2^32, maximum transaction id, wraps around back at this point
 	" where current_xaction >= (? + ?) % 4294967296 "+ 
@@ -624,6 +749,10 @@ public class SlaveRunner implements Runnable
     private static final String ERROR_SLEEP_KEY = "bruce.slaveErrorSleep";
     // This default value may need some tuning. 100ms seemed too small, 1s might be right
     private static int ERROR_SLEEP_DEFAULT = 30000;
+
+
+    private static final String TRANSACTIONLOG_FETCH_SIZE_KEY = "bruce.transactionLogFetchSize";
+    private static int TRANSACTIONLOG_FETCH_SIZE_DEFAULT = 5000;
     
     private QueryCache queryCache;
 }
