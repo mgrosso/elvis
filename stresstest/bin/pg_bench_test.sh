@@ -13,11 +13,11 @@
 ## ----------------------------------------------------------------------
 
 if [ -z $BASE ] ; then
-    BASE=elvis-pgbench-test
+    export BASE=elvis-pgbench-test
 fi
 
 if [ -z $LOGS ] ; then
-    LOGS=$BASE/logs/
+    export LOGS=$BASE/logs/
 fi
 
 
@@ -95,16 +95,6 @@ function maketop(){
     mkdir -p $BASE/logs/
 }
 
-function parse_topology(){
-    CLUSTER_TOPOLOGY=$1
-    NODE_NUMBERS=$(echo $CLUSTER_TOPOLOGY|tr ',' ' ' )
-    MASTER_NODE=$(echo $CLUSTER_TOPOLOGY|cut -d ',' -f 1)
-    local NODE_COUNT=$(echo $NODE_NUMBERS|xargs -n 1 echo | wc -l )
-    local SLAVE_COUNT=$((NODE_COUNT-1))
-    SLAVE_NODES=$(echo $NODE_NUMBERS|xargs -n 1 echo | tail -n ${SLAVE_COUNT})
-    CLUSTER_NAME=cluster_${MASTER_NODE}
-}
-
 function foreach_cluster (){
     FUNC=$1
     shift
@@ -121,6 +111,16 @@ function foreach_node (){
     done
 }
 
+function parse_topology(){
+    CLUSTER_TOPOLOGY=$1
+    NODE_NUMBERS=$(echo $CLUSTER_TOPOLOGY|tr ',' ' ' )
+    MASTER_NODE=$(echo $CLUSTER_TOPOLOGY|cut -d ',' -f 1)
+    local NODE_COUNT=$(echo $NODE_NUMBERS|xargs -n 1 echo | wc -l )
+    local SLAVE_COUNT=$((NODE_COUNT-1))
+    SLAVE_NODES=$(echo $NODE_NUMBERS|xargs -n 1 echo | tail -n ${SLAVE_COUNT})
+    CLUSTER_NAME=cluster_${MASTER_NODE}
+}
+
 function set_uhp(){
     DIGIT=$1
     PG_DATA=$BASE/pg_data_$DIGIT
@@ -130,7 +130,8 @@ function set_uhp(){
     RUNPSQL="psql -e $UHP -d $DB -c "
     RUNPSQLF="psql -e $UHP -d $DB -f "
     DBURL="jdbc:postgresql://localhost:$PORT/$DB?user=$TESTUSER"
-    BRUCE_OPTS="-Dpid.file=bruce.pid -Dlog4j.configuration=${CLUSTER_SUFFIX}log4j.properties -Dpostgresql.db_name=${DB} -Dpostgresql.URL=${DBURL} -Dhibernate.connection.url=${DBURL} -Dhibernate.connection.username=${TESTUSER} -Dhibernate.dialect=org.hibernate.dialect.PostgreSQLDialect"
+    BRUCE_OPTS="-Dpid.file=bruce.pid -Dlog4j.configuration=log4j.properties -Dlog4j.appender.R.File=bruce-${CLUSTER_NAME}.log -Dpostgresql.db_name=${DB} -Dpostgresql.URL=${DBURL} -Dhibernate.connection.url=${DBURL} -Dhibernate.connection.username=${TESTUSER} -Dhibernate.dialect=org.hibernate.dialect.PostgreSQLDialect"
+
 }
 
 function stop_any_running_db (){
