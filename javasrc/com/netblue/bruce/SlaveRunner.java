@@ -328,7 +328,7 @@ public class SlaveRunner implements Runnable
     }
 
     private void logMem(String msg){
-        Runtime r=java.lang.getRuntime();
+        Runtime r=java.lang.Runtime.getRuntime();
         long max = r.maxMemory();
         long free = r.freeMemory();
         long total = r.totalMemory();
