@@ -135,7 +135,7 @@ function set_uhp(){
 }
 
 function stop_any_running_db (){
-    for N in $NODE_NUMBERS ; do
+    for N in $ALL_NODE_NUMBERS ; do
         set_uhp $N 
         while [ $( ps -fe | grep $PG_DATA | grep -v grep | wc -l ) -gt 0 ] ; do
             kill -QUIT $( ps -fe | grep $PG_DATA | grep -v grep | tr -s ' ' | cut -d ' ' -f 2 )
