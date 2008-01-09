@@ -39,6 +39,9 @@ import static java.text.MessageFormat.format;
 import java.util.ArrayList;
 import java.util.HashSet;
 import javax.sql.DataSource;
+import java.lang.ClassNotFoundException ;
+import java.lang.InstantiationException ;
+import java.lang.IllegalAccessException ;
 
 /**
  * Responsible for obtaining {@link com.netblue.bruce.Snapshot}s from the <code>SnapshotCache</code>
@@ -48,17 +51,16 @@ import javax.sql.DataSource;
  */
 public class SlaveRunner implements Runnable
 {
-    public SlaveRunner(final DataSource masterDataSource, final Cluster cluster, final Node node){
+    public SlaveRunner(final Cluster cluster, final Node node){
         this.node = node;
         this.cluster = cluster;
-        this.masterDataSource = masterDataSource;
         sleepTime=NEXT_SNAPSHOT_UNAVAILABLE_SLEEP_DEFAULT;
         errorSleepTime=ERROR_SLEEP_DEFAULT;
         // very important that we only ever initialize the query cache once.
         queryCache = new QueryCache();
     }
 
-    private boolean init(){
+    private boolean init() throws Exception {
         properties = new BruceProperties();
         // Get our query strings
         selectLastSnapshotQuery = properties.getProperty(SNAPSHOT_STATUS_SELECT_KEY, SNAPSHOT_STATUS_SELECT_DEFAULT);
@@ -74,75 +76,43 @@ public class SlaveRunner implements Runnable
 
         plusNSnapshotQuery = properties.getProperty( PLUSN_SNAPSHOT_QUERY_KEY, PLUSN_SNAPSHOT_QUERY_DEFAULT);
         getOutstandingTransactionsQuery = properties.getProperty(GET_OUTSTANDING_TRANSACTIONS_KEY,GET_OUTSTANDING_TRANSACTIONS_DEFAULT);
-        // Setup our data source
-        dataSource.setDriverClassName(properties.getProperty("bruce.jdbcDriverName", "org.postgresql.Driver"));
-        dataSource.setValidationQuery(properties.getProperty("bruce.poolQuery", "select now()"));
-        dataSource.setUrl(node.getUri());
-        dataSource.setAccessToUnderlyingConnectionAllowed(true);
 
-        try
-        {
-            LOGGER.info("Replicating node: " + node.getName() + " at " + node.getUri());
-            RegExReplicationStrategy strategy = new RegExReplicationStrategy(dataSource);
-            final ArrayList<String> replicatedTables = strategy.getTables(node, null);
-            LOGGER.info("Replicating " + replicatedTables.size() + " tables");
-            for (String table : replicatedTables)
-            {
-                LOGGER.info("Replicating table: " + table);
-            }
+        LOGGER.info("Replicating node: " + node.getName() + " at " + node.getUri());
 
-            // creates a connection and all of our prepared statements
-            initializeDatabaseResources();
-            initializeMasterDatabaseResources();
+        // creates a connection and all of our prepared statements
+        initializeDatabaseResources();
 
-            // Now get the last snapshot processed from the DB
-            setLastProcessedSnapshot();
-            if (getLastProcessedSnapshot() == null) {
-                LOGGER.error("Cannot replicate slave node.  No starting point has been identified.  Please ensure that " +
-                        "the slavesnapshotstatus table on " + this.node.getUri() + " has been properly initialized.");
-                return false;
-            }
-            return true;
+        // Now get the last snapshot processed from the DB
+        setLastProcessedSnapshot();
+        if (getLastProcessedSnapshot() == null) {
+            LOGGER.error("Cannot replicate slave node.  No starting point has been identified.  Please ensure that " +
+                    "the slavesnapshotstatus table on " + this.node.getUri() + " has been properly initialized.");
+            return false;
         }
-        catch (SQLException e)
-        {
-            final String errorMessage = format(
-                    "Unable to obtain a connection to slave node.  Cluster node {0} at {1} will not be replicated.",
-                    node.getName(), node.getUri());
-            LOGGER.error(errorMessage, e);
-        }
-        return false;
+        slaveTables = null;
+        getSlaveTables();
+        return true;
     }
 
     /**
-     * Gets a DB connection, and ensures that all {@link java.sql.PreparedStatement}s we have are valid.
+     * Gets a slave DB connection.  does no validation. If anything has gone wrong, SQLExceptions will be 
+     * caught at top level, and the next init() cycle will take care of it.
      *
-     * @return
-     *
+     * @return slave connection.
      * @throws SQLException
      */
-    private Connection getConnection() throws SQLException
-    {
-        if (!hasValidConnection())
-        {
-            initializeDatabaseResources();
-        }
-        return theOneConnection;
+    private Connection getConnection() throws SQLException {
+        return slaveConnection;
     }
 
     /**
-     * Gets the master DB connection, and ensures that all {@link java.sql.PreparedStatement}s we have are valid.
+     * Gets a master DB connection.  does no validation. If anything has gone wrong, SQLExceptions will be 
+     * caught at top level, and the next init() cycle will take care of it.
      *
-     * @return
-     *
+     * @return master connection.
      * @throws SQLException
      */
-    private Connection getMasterConnection() throws SQLException
-    {
-        if (!hasValidMasterConnection())
-        {
-            initializeMasterDatabaseResources();
-        }
+    private Connection getMasterConnection() throws SQLException {
         return masterConnection;
     }
 
@@ -151,35 +121,31 @@ public class SlaveRunner implements Runnable
      *
      * @return true if we have a valid, open connection
      */
-    private boolean hasValidConnection()
-    {
-        try
-        {
-            return (theOneConnection != null && !theOneConnection.isClosed());
-        }
-        catch (SQLException e)
-        {
-            LOGGER.error(e);
+    private boolean isValidConnection(Connection c ) {
+        try {
+            return (slaveConnection != null && !slaveConnection.isClosed());
+        } catch (SQLException e) {
+            LOGGER.error("checking for valid connection, probably just before trying to close it, got this exception:",e);
         }
         return false;
     }
 
     /**
-     * Checks the state of our connection
-     *
-     * @return true if we have a valid, open connection
+     * Opens a connection to the database, returns it.
+     * @throws SQLException
      */
-    private boolean hasValidMasterConnection()
-    {
-        try
-        {
-            return (masterConnection != null && !masterConnection.isClosed());
-        }
-        catch (SQLException e)
-        {
-            LOGGER.error(e);
-        }
-        return false;
+    private Connection constructConnection(String uri) 
+    throws SQLException,ClassNotFoundException,InstantiationException, IllegalAccessException {
+        //first close anything existing...
+        //
+        // Setup our database connection, then prepare all statements.
+        String driverclassname = properties.getProperty("bruce.jdbcDriverName", "org.postgresql.Driver");
+        Class driverclass = Class.forName(driverclassname);
+        java.sql.Driver driver = (java.sql.Driver)driverclass.newInstance();
+        Connection giveback = driver.connect(uri,properties);
+        giveback.setAutoCommit(false);
+        giveback.setTransactionIsolation(Connection.TRANSACTION_REPEATABLE_READ);
+        return giveback;
     }
 
     /**
@@ -188,35 +154,14 @@ public class SlaveRunner implements Runnable
      *
      * @throws SQLException
      */
-    private void initializeDatabaseResources() throws SQLException
-    {
-        theOneConnection = dataSource.getConnection();
-        theOneConnection.setAutoCommit(false);
-        theOneConnection.setTransactionIsolation(Connection.TRANSACTION_REPEATABLE_READ);
-        try
-        {
-            PGConnection theOneConnectionPg =
-                    (PGConnection) ((DelegatingConnection) theOneConnection).getInnermostDelegate();
-            theOneConnectionPg.setPrepareThreshold(1);
-        }
-        catch (Throwable t)
-        {
-            LOGGER.debug("Throwable when setting Pg JDBC Prepare Threshold. Proceding anyways.", t);
-        }
+    private void initializeDatabaseResources() 
+    throws SQLException, ClassNotFoundException,InstantiationException, IllegalAccessException{
+        //first close anything existing...
+        //
+        // Setup our database connection, then prepare all statements.
+        slaveConnection = constructConnection(node.getUri());
+        masterConnection = constructConnection(cluster.getMaster().getUri());
         prepareStatements();
-    }
-
-    /**
-     * Opens a connection to the database, sets our internal instance to that connection, and initializes all
-     * PreparedStatments we will use.
-     *
-     * @throws SQLException
-     */
-    private void initializeMasterDatabaseResources() throws SQLException
-    {
-        masterConnection = masterDataSource.getConnection();
-        masterConnection.setAutoCommit(false);
-        //masterConnection.setTransactionIsolation(Connection.TRANSACTION_REPEATABLE_READ);
         prepareMasterStatements();
     }
 
@@ -225,17 +170,17 @@ public class SlaveRunner implements Runnable
      */
     private void releaseDatabaseResources() {
         try {
-            closeStatements();
-            if (hasValidConnection()) {
-                getConnection().close();
+            if (isValidConnection(slaveConnection)) {
+                closeStatements();
+                slaveConnection.close();
             }
         } catch (Exception e) {
             LOGGER.error("Unable to close slave database resources.", e);
         }
         try {
-            closeMasterStatements();
-            if (hasValidMasterConnection()) {
-                getMasterConnection().close();
+            if (isValidConnection(masterConnection)) {
+                closeMasterStatements();
+                masterConnection.close();
             }
         } catch (Exception e) {
             LOGGER.error("Unable to close master database resources.", e);
@@ -257,18 +202,18 @@ public class SlaveRunner implements Runnable
 
     /**
      * Prepares all of the {@link java.sql.PreparedStatement}s we need for this class.  Assumes a valid and open {@link
-     * #theOneConnection} with auto commit off.
+     * #slaveConnection} with auto commit off.
      *
      * @throws SQLException
      */
     private void prepareStatements() throws SQLException {
-        Connection connection = getConnection();
-        selectLastSnapshotStatement = connection.prepareStatement(selectLastSnapshotQuery);
-        updateLastSnapshotStatement = connection.prepareStatement(updateLastSnapshotQuery);
-        slaveTransactionIdStatement = connection.prepareStatement(slaveTransactionIdQuery);
-        applyTransactionsStatement = connection.prepareStatement(applyTransactionsQuery);
-	slaveTableIDStatement = connection.prepareStatement(slaveTableIDQuery);
-        connection.commit();
+        slaveConnection.setSavepoint();
+        selectLastSnapshotStatement = slaveConnection.prepareStatement(selectLastSnapshotQuery);
+        updateLastSnapshotStatement = slaveConnection.prepareStatement(updateLastSnapshotQuery);
+        slaveTransactionIdStatement = slaveConnection.prepareStatement(slaveTransactionIdQuery);
+        applyTransactionsStatement = slaveConnection.prepareStatement(applyTransactionsQuery);
+	slaveTableIDStatement = slaveConnection.prepareStatement(slaveTableIDQuery);
+        slaveConnection.commit();
     }
 
     /**
@@ -278,10 +223,10 @@ public class SlaveRunner implements Runnable
      * @throws SQLException
      */
     private void prepareMasterStatements() throws SQLException {
-        Connection connection = getMasterConnection();
-        plusNSnapshotStatement = connection.prepareStatement(plusNSnapshotQuery);
-        getOutstandingTransactionsStatement = connection.prepareStatement(getOutstandingTransactionsQuery);
-        connection.commit();
+        masterConnection.setSavepoint() ;
+        plusNSnapshotStatement = masterConnection.prepareStatement(plusNSnapshotQuery);
+        getOutstandingTransactionsStatement = masterConnection.prepareStatement(getOutstandingTransactionsQuery);
+        masterConnection.commit();
     }
 
     public void run()
@@ -295,7 +240,10 @@ public class SlaveRunner implements Runnable
                     }
                 }
             }catch (Exception e) {
-                LOGGER.error("SlaveRunner caught exception at toplevel. will sleep,init(),retry:", e);
+                final String  msg = format(
+                    "Exception replicating to node {0} from {1}. SlaveRunner thread will sleep,init(),retry:",
+                    node.getName(), node.getUri());
+                LOGGER.error(msg,e);
             }
             //we are here because init() failed or because of exception.
             releaseDatabaseResources();
@@ -314,6 +262,9 @@ public class SlaveRunner implements Runnable
     }
 
     private void doWork()throws SQLException {
+        logMem("start of doWork");
+        masterConnection.rollback();//should do nothing.
+        slaveConnection.rollback();//should do nothing.
         LOGGER.trace("Last processed snapshot: " + lastProcessedSnapshot);
         if (getLastProcessedSnapshot() == null) {
             LOGGER.error("doWork(): BUG: getLastProcessedSnapshot() returns null, which implies init() failed, but we should never get here if init failed.");
@@ -321,10 +272,9 @@ public class SlaveRunner implements Runnable
         final Snapshot nextSnapshot = getNextSnapshot();
         if (nextSnapshot != null){
             LOGGER.trace("Last processed snapshot: " + lastProcessedSnapshot + " new snapshot: "+nextSnapshot );
-            logMem("before processing next snapshot");
             processSnapshot(nextSnapshot);
-            logMem("after processing next snapshot");
         }
+        logMem("end of doWork");
     }
 
     private void logMem(String msg){
@@ -435,7 +385,7 @@ public class SlaveRunner implements Runnable
         LOGGER.trace("getting transactions for snapshot with current xid: "
                 +snapshot.getCurrentXid());
 
-        Connection masterConnection = getMasterConnection();
+        masterConnection.setSavepoint();
         getOutstandingTransactionsStatement.setFetchSize(transactionLogFetchSize);
         getOutstandingTransactionsStatement.setLong(
                 1,lastProcessedSnapshot.getMinXid().getLong());
@@ -554,6 +504,7 @@ public class SlaveRunner implements Runnable
                     if (snapshotLT(processedSnapshot,retVal)) {
                         rs.close();
                         rs=null;
+                        masterConnection.rollback();
                         return retVal;
                     } else {
                         LOGGER.trace("However, retrived snapshot less than lastProcessedSnapshot");
@@ -564,6 +515,7 @@ public class SlaveRunner implements Runnable
                 }
                 rs.close();
                 rs=null;
+                masterConnection.rollback();
             }
             return retVal;
         }finally{
@@ -642,20 +594,30 @@ public class SlaveRunner implements Runnable
         LOGGER.trace("fetching Slave Tables from database:");
 	slaveTables = new HashSet<String>();
 	ResultSet rs = slaveTableIDStatement.executeQuery();
-	while (rs.next()) {
-            String table = rs.getString("tablename");
-	    slaveTables.add(table);
-            LOGGER.trace(table);
-	}
-	rs.close();
+        try{
+            while (rs.next()) {
+                String table = rs.getString("tablename");
+                slaveTables.add(table);
+                LOGGER.trace(table);
+            }
+        }finally{
+            try{
+                rs.close();
+            }catch(SQLException sqle){
+                LOGGER.error("problem closing result of getting list of tables from slave database triggers, "+
+                "this is in finally block, may be secondary exception:",sqle);
+            }
+        }
 	return slaveTables;
     }
     
     // --------- Class fields ---------------- //
     private boolean shutdownRequested = false;
     private BruceProperties properties;
-    private Connection theOneConnection;
+
+    private Connection slaveConnection;
     private Connection masterConnection;
+
     private Snapshot lastProcessedSnapshot;
     private PreparedStatement selectLastSnapshotStatement;
     private PreparedStatement updateLastSnapshotStatement;
@@ -678,12 +640,11 @@ public class SlaveRunner implements Runnable
     private String slaveTableIDQuery;
     private String getOutstandingTransactionsQuery;
     private String plusNSnapshotQuery;
-    private BasicDataSource dataSource = new BasicDataSource();
 
     // --------- Constants ------------------- //
     private final Node node;
     private final Cluster cluster;
-    private final DataSource masterDataSource;
+
 
     // --------- Static Constants ------------ //
     private static final Logger LOGGER = Logger.getLogger(SlaveRunner.class);
