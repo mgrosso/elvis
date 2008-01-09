@@ -534,34 +534,49 @@ public class SlaveRunner implements Runnable
         LOGGER.trace("Getting next snapshot");
 	Snapshot retVal = null;
         final Snapshot processedSnapshot = getLastProcessedSnapshot();	
-        ResultSet rs;
-        for (long l:new long[]{100000L, 50000L, 25000L, 10000L, 5000L, 2000L, 1000L,
-                               500L,250L,125L,100L,75L,50L,25L,10L,5L,4L,3L,2L,1L}) {
-            LOGGER.trace("trying lastProcessedSnapshot +"+l);
-            retVal = null;
-            plusNSnapshotStatement.setLong(1,processedSnapshot.getCurrentXid().getLong());
-            plusNSnapshotStatement.setLong(2,l);
-            plusNSnapshotStatement.setLong(3,processedSnapshot.getMinXid().getLong());
-            plusNSnapshotStatement.setLong(4,processedSnapshot.getMinXid().getLong());
-            plusNSnapshotStatement.setLong(5,processedSnapshot.getMaxXid().getLong());
-            rs=plusNSnapshotStatement.executeQuery();
-            if (rs.next()) {
-                retVal = new Snapshot(new TransactionID(rs.getLong("current_xaction")),
-                                      new TransactionID(rs.getLong("min_xaction")),
-                                      new TransactionID(rs.getLong("max_xaction")),
-                                      rs.getString("outstanding_xactions"));
-                LOGGER.trace("Retrived "+retVal);
-                if (snapshotLT(processedSnapshot,retVal)) {
-                    return retVal;
+        ResultSet rs = null;
+        try{
+            for (long l: snaphot_query_sizes){
+                LOGGER.trace("trying lastProcessedSnapshot +"+l);
+                retVal = null;
+                plusNSnapshotStatement.setLong(1,processedSnapshot.getCurrentXid().getLong());
+                plusNSnapshotStatement.setLong(2,l);
+                plusNSnapshotStatement.setLong(3,processedSnapshot.getMinXid().getLong());
+                plusNSnapshotStatement.setLong(4,processedSnapshot.getMinXid().getLong());
+                plusNSnapshotStatement.setLong(5,processedSnapshot.getMaxXid().getLong());
+                rs=plusNSnapshotStatement.executeQuery();
+                if (rs.next()) {
+                    retVal = new Snapshot(new TransactionID(rs.getLong("current_xaction")),
+                                          new TransactionID(rs.getLong("min_xaction")),
+                                          new TransactionID(rs.getLong("max_xaction")),
+                                          rs.getString("outstanding_xactions"));
+                    LOGGER.trace("Retrived "+retVal);
+                    if (snapshotLT(processedSnapshot,retVal)) {
+                        rs.close();
+                        rs=null;
+                        return retVal;
+                    } else {
+                        LOGGER.trace("However, retrived snapshot less than lastProcessedSnapshot");
+                        retVal=null;
+                    }
                 } else {
-                    LOGGER.trace("However, retrived snapshot less than lastProcessedSnapshot");
-                    retVal=null;
+                    LOGGER.trace("No snapshot >= lastProcessedSnapshot +"+l);
                 }
-            } else {
-                LOGGER.trace("No snapshot >= lastProcessedSnapshot +"+l);
+                rs.close();
+                rs=null;
+            }
+            return retVal;
+        }finally{
+            if(null!=rs){
+                try{
+                    rs.close();
+                }catch(SQLException sqle){
+                    LOGGER.error("after an error, received secondary exception trying to close "+
+                        "result set. the root cause exception will still propogate.  secondary exception is:",
+                        sqle);
+                }
             }
         }
-        return retVal;
     }
 
 
@@ -765,5 +780,6 @@ public class SlaveRunner implements Runnable
     private static final String TRANSACTIONLOG_FETCH_SIZE_KEY = "bruce.transactionLogFetchSize";
     private static int TRANSACTIONLOG_FETCH_SIZE_DEFAULT = 5000;
     
+    private static final long[] snaphot_query_sizes = new long []{100000L, 25000L, 5000L, 2000L, 500L,125L,25L,5L,3L,2L,1L} ;
     private QueryCache queryCache;
 }
