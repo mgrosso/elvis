@@ -143,9 +143,9 @@ function stop_any_running_db (){
         done
         pg_ctl -D $PG_DATA -m immediate stop 
     done
-    kill $(cat bruce.pid)
+    kill $( ps -ef | grep java | grep bruce.jar | grep -v grep | tr -s ' ' | cut -d ' ' -f 2 )
     sleep 3 
-    kill -9 $(cat bruce.pid)
+    kill -9 $( ps -ef | grep java | grep bruce.jar | grep -v grep | tr -s ' ' | cut -d ' ' -f 2 )
 }
 
 function waitfordb(){
