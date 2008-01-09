@@ -205,8 +205,8 @@ function make_schema (){
     $RUNPSQL "create table pgbench_test_heartbeat ( id bigint primary key, t timestamp not null unique );" >$LOGS/create-table-${DIGIT}.out 2>&1 ||
             puke "psql failed to create table ${TESTUSER}_heartbeat"
     do_or_puke pgbench -i $UHP -d $DB -s $PGBENCH_SCALEFACTOR 
-    $RUNPSQL "alter table history add column id bigserial primary key;" >>$LOGS/create-table-${DIGIT}.out 2>&1 ||
-            puke "psql failed to create table ${TESTUSER}_heartbeat"
+    $RUNPSQL "alter table public.history add column id bigserial primary key;" >>$LOGS/create-table-${DIGIT}.out 2>&1 ||
+            puke "psql failed on [alter table public.history add column id bigserial primary key;]"
 }
 
 function makedb (){
