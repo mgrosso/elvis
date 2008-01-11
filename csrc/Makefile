@@ -1,5 +1,5 @@
-MODULE_big=bruce
-OBJS=bruce.o
+MODULE_big=elvis
+OBJS=elvis.o
 
 PGXS := $(shell pg_config --pgxs)
 include $(PGXS)
