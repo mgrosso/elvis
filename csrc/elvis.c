@@ -595,13 +595,9 @@ static void parse_change_info(statement_cache_item *item,char *change_info){
     //   "id:int8:MTA4Nw==:MTA4Nw==|site_id:int8:MTA2:MTA2"
     //    c
     //
-    static char *empty=NULL;
     size_t f=0;
     size_t skip=2;
     char *c=change_info;
-    if(empty==NULL){
-        empty=bruce_copy_string("");
-    }
     for( 
         f=0,c=change_info ; 
         c && *c && f < item->num_info_columns_to_parse ;
@@ -620,10 +616,10 @@ static void parse_change_info(statement_cache_item *item,char *change_info){
         //   "id:int8:MTA4Nw==:MTA4Nw==|site_id:int8:MTA2:MTA2"
         //            c
         //
+        item->raw_old[f]=c;
         if( *c==':' ){
-            item->raw_old[f]=empty;
+            //noop: zero length field, eg id:varchar::MTA4Nw==|
         } else{
-            item->raw_old[f]=c;
             c=strchr(c,':');
         }
         if(!c || !*c || *c!=':' ){
@@ -631,7 +627,10 @@ static void parse_change_info(statement_cache_item *item,char *change_info){
         }
         *c='\0';//null terminate the raw_old
         ++c;//advance to the first char of raw_new
-        if( !*c || *c==':' || *c=='|' ){
+        if(f==item->num_info_columns_to_parse-1 && ! *c ){
+            //the raw_new of the last field is zero length
+            item->raw_new[f]=c;
+        }else if( !*c || *c==':' ){
             ereport(ERROR,(errmsg_internal("could not parse info string: raw_new looks wrong. field=%u first part of info string: %s",f,change_info)));
         }
         //   "id:int8:MTA4Nw==\0MTA4Nw==|site_id:int8:MTA2:MTA2"
@@ -640,7 +639,12 @@ static void parse_change_info(statement_cache_item *item,char *change_info){
         //
         item->raw_new[f]=c;
         if(f<item->num_info_columns_to_parse -1 ){
-            c=strchr(c,'|');
+            if(*c=='|'){ 
+                //zero length field, eg id:varchar:MTA4Nw==:|
+                //noop: previous field was empty, so dont advance c, we are already on a '|'
+            }else{
+                c=strchr(c,'|');
+            }
             if( !c || !*c || *c!= '|' ){
                 ereport(ERROR,(errmsg_internal("could not parse info string: expected '|'. field=%u first part of info string: %s",f,change_info)));
             }
