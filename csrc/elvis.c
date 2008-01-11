@@ -595,9 +595,13 @@ static void parse_change_info(statement_cache_item *item,char *change_info){
     //   "id:int8:MTA4Nw==:MTA4Nw==|site_id:int8:MTA2:MTA2"
     //    c
     //
+    static char *empty=NULL;
     size_t f=0;
     size_t skip=2;
     char *c=change_info;
+    if(empty==NULL){
+        empty=bruce_copy_string("");
+    }
     for( 
         f=0,c=change_info ; 
         c && *c && f < item->num_info_columns_to_parse ;
@@ -610,14 +614,18 @@ static void parse_change_info(statement_cache_item *item,char *change_info){
             }
             ++c;//move past : to start of type description or start of raw_old
         }
-        if(!c || !*c || *c==':' || *c=='|' ){
+        if(!c || !*c || *c=='|' ){
             ereport(ERROR,(errmsg_internal("could not parse info string: raw_old looks wrong. field=%u first part of info string=%s", f,change_info)));
         }
         //   "id:int8:MTA4Nw==:MTA4Nw==|site_id:int8:MTA2:MTA2"
         //            c
         //
-        item->raw_old[f]=c;
-        c=strchr(c,':');
+        if( *c==':' ){
+            item->raw_old[f]=empty;
+        } else{
+            item->raw_old[f]=c;
+            c=strchr(c,':');
+        }
         if(!c || !*c || *c!=':' ){
             ereport(ERROR,(errmsg_internal("could not parse info string: missing third ':'.  field=%u first part of info string: %s", f,change_info)));
         }
