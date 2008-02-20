@@ -719,6 +719,6 @@ public class SlaveRunner implements Runnable {
     private static final String TRANSACTIONLOG_FETCH_SIZE_KEY = "bruce.transactionLogFetchSize";
     private static int TRANSACTIONLOG_FETCH_SIZE_DEFAULT = 5000;
     
-    private static final long[] snaphot_query_sizes = new long []{100000L, 25000L, 5000L, 2000L, 500L,125L,25L,5L,3L,2L,1L} ;
+    private static final long[] snaphot_query_sizes = new long []{2000L, 500L,125L,25L,5L,3L,2L,1L} ;
     private QueryCache queryCache;
 }
