@@ -119,7 +119,9 @@ public class QueryCache {
         StringBuffer paramTypeNames = new StringBuffer();
         StringBuffer paramColumnNames = new StringBuffer();
         StringBuffer paramInfoIndices = new StringBuffer();
-        Map<String,String> whereParams = new HashMap<String,String>();
+        //Map<String,String> whereParams = new HashMap<String,String>();
+        List<ParamNameAndType> whereParams = new ArrayList<ParamNameAndType>();
+        
         StringBuffer whereIndices = new StringBuffer();
         
         for(String column : columns) {
@@ -127,7 +129,8 @@ public class QueryCache {
             
             if(command != INSERT_COMMAND_TYPE) {
                 if (uniqCols.contains(tokens[FIELD_NAME_INDEX])) {
-                    whereParams.put(tokens[FIELD_NAME_INDEX], tokens[FIELD_TYPE_INDEX]);
+                    //whereParams.put(tokens[FIELD_NAME_INDEX], tokens[FIELD_TYPE_INDEX]);
+                	whereParams.add(new ParamNameAndType(tokens[FIELD_NAME_INDEX], tokens[FIELD_TYPE_INDEX]));
                     if (whereIndices.length() > 0) {
                         whereIndices.append(PIPE_DLIMITER);
                     }
@@ -182,24 +185,30 @@ public class QueryCache {
             if(whereParams.size() > 0) {
                 i = 0;
                 queryBuffer.append(" WHERE ");
-                for(Map.Entry<String, String> kv : whereParams.entrySet()) {
+                //for(Map.Entry<String, String> kv : whereParams.entrySet()) {
+                for(ParamNameAndType paramNameNType : whereParams) {
                     if (i > 0 && i < whereParams.size()) {
                         queryBuffer.append(" AND ");
                     }
-                    queryBuffer.append((kv.getKey() + " = " + addParam(numParamTypes+1)));
+                    //queryBuffer.append((kv.getKey() + " = " + addParam(numParamTypes+1)));
+                    queryBuffer.append((paramNameNType.paramName + " = " + addParam(numParamTypes+1)));
                     
                     if (i == 0) {
                     	if(paramTypeNames.length() > 0) paramTypeNames.append(PIPE_DLIMITER);
                     }
                     
-                    paramTypeNames.append(kv.getValue());
+                    //paramTypeNames.append(kv.getValue());
+                    paramTypeNames.append(paramNameNType.paramType);
                     numParamTypes++;
                     
                     if (i + 1 < whereParams.size()) {
                         paramTypeNames.append(PIPE_DLIMITER);
                     }
                     if(command == DELETE_COMMAND_TYPE) { 
-                        paramColumnNames.append(kv.getKey());
+                        paramColumnNames.append(paramNameNType.paramName);
+                        if (i + 1 < whereParams.size()) {
+                        	paramColumnNames.append(PIPE_DLIMITER);
+                        }
                     }
                     ++i;
                 }
@@ -249,8 +258,8 @@ public class QueryCache {
         
         System.out.println("================================ INSERT ==============");
         char commandType = QueryCache.INSERT_COMMAND_TYPE;
-        String schTableName = "public.test1";
-        String infoString = "id:int4:Mg==:Mg==|c_bytea:bytea:Ng==:Ng==|c_text:text:NA==:NQ==|c_int:int4:!:!";
+        String schTableName = "public.check_delete_1";
+        String infoString = "day_id:int4:MjYyMw==:!|p:int8:MTkwMDAwMTkxOQ==:!|search_term:varchar:RG9vciBIYW5naW5n:!|is_new_user:int2:MA==:!|views:int8:MQ==:!|submits:int8:MA==:!|confirms:int8:MA==:!|revenue:int8:MA==:!|payout:int8:MA==:!|auctions:int8:!:!";
         Connection conn = masterDataSource.getConnection();
         
         QueryParams queryParams = queryCache.getQueryInfo(String.valueOf(commandType), schTableName, infoString, conn);
@@ -270,3 +279,107 @@ public class QueryCache {
 
     }
 }
+
+class ParamNameAndType {
+	public ParamNameAndType(String paramName, String paramType) {
+		this.paramName = paramName;
+		this.paramType = paramType;
+	}
+	public String paramName;
+	public String paramType;
+}
+
+
+/**
+*This is the output generated against following test tables
+*<pre>
+*
+* create table check_delete (
+* day_id int not null,
+* p bigint not null,
+* search_term varchar not null,
+* is_new_user smallint not null,
+* views bigint not null,
+* submits bigint not null,
+* confirms bigint not null,
+* revenue bigint not null,
+* payout bigint not null,
+* auctions bigint,
+* primary key (day_id, p, search_term, is_new_user)
+* );
+* 
+* insert into check_delete (day_id,p,search_term,is_new_user,views,submits,confirms,revenue,payout,auctions)
+* values (1,1,'search_term',1,1,1,1,1,1,1);
+* 
+* insert into check_delete (day_id,p,search_term,is_new_user,views,submits,confirms,revenue,payout,auctions)
+* values (2,2,'search_term 2',2,2,2,2,2,2,2);
+* 
+* ========================================================================================================================================== output
+* ================================ INSERT ==============
+* insert queryinfo: query=INSERT INTO public.check_delete ( day_id, p, search_term, is_new_user, views, submits, confirms, revenue, payout, auctions )  VALUES (  $1 ,  $2 ,  $3 ,  $4 ,  $5 ,  $6 ,  $7 ,  $8 ,  $9 ,  $10  )
+*  paramColumnNames=day_id|p|search_term|is_new_user|views|submits|confirms|revenue|payout|auctions
+*  paramTypeNames=int4|int8|varchar|int2|int8|int8|int8|int8|int8|int8
+*  paramInfoIndices=1|2|3|4|5|6|7|8|9|10
+*  numParamTypes=10
+*  index=0
+* ================================ UPDATE ==============
+* update queryinfo: query=UPDATE public.check_delete SET day_id =  $1 , p =  $2 , search_term =  $3 , is_new_user =  $4 , views =  $5 , submits =  $6 , confirms =  $7 , revenue =  $8 , payout =  $9 , auctions =  $10  WHERE day_id =  $11  AND p =  $12  AND search_term =  $13  AND is_new_user =  $14
+*  paramColumnNames=day_id|p|search_term|is_new_user|views|submits|confirms|revenue|payout|auctions
+*  paramTypeNames=int4|int8|varchar|int2|int8|int8|int8|int8|int8|int8|int4|int8|varchar|int2
+*  paramInfoIndices=1|2|3|4|5|6|7|8|9|10|-1|-2|-3|-4
+*  numParamTypes=14
+*  index=1
+* ================================ DELETE ==============
+* delete queryinfo: query=DELETE FROM public.check_delete  WHERE day_id =  $1  AND p =  $2  AND search_term =  $3  AND is_new_user =  $4
+*  paramColumnNames=day_id|p|search_term|is_new_user
+*  paramTypeNames=int4|int8|varchar|int2
+*  paramInfoIndices=-1|-2|-3|-4
+*  numParamTypes=4
+*  index=2
+* 
+* 
+* ========================================= some changes in table =======================================================================================
+* create table check_delete_1 (
+* day_id int not null,
+* p bigint not null,
+* search_term varchar not null,
+* is_new_user smallint not null,
+* views bigint not null,
+* submits bigint not null,
+* confirms bigint not null,
+* revenue bigint not null,
+* payout bigint not null,
+* auctions bigint,
+* primary key (day_id, p, search_term, is_new_user,payout)
+* );
+* 
+* insert into check_delete_1 (day_id,p,search_term,is_new_user,views,submits,confirms,revenue,payout,auctions)
+* values (1,1,'search_term',1,1,1,1,1,1,1);
+* 
+* insert into check_delete_1 (day_id,p,search_term,is_new_user,views,submits,confirms,revenue,payout,auctions)
+* values (2,2,'search_term 2',2,2,2,2,2,2,2);
+* 
+* =========================================================================================================================== Output
+* ================================ INSERT ==============
+* insert queryinfo: query=INSERT INTO public.check_delete ( day_id, p, search_term, is_new_user, views, submits, confirms, revenue, payout, auctions )  VALUES (  $1 ,  $2 ,  $3 ,  $4 ,  $5 ,  $6 ,  $7 ,  $8 ,  $9 ,  $10  )
+*  paramColumnNames=day_id|p|search_term|is_new_user|views|submits|confirms|revenue|payout|auctions
+*  paramTypeNames=int4|int8|varchar|int2|int8|int8|int8|int8|int8|int8
+*  paramInfoIndices=1|2|3|4|5|6|7|8|9|10
+*  numParamTypes=10
+*  index=0
+* ================================ UPDATE ==============
+* update queryinfo: query=UPDATE public.check_delete SET day_id =  $1 , p =  $2 , search_term =  $3 , is_new_user =  $4 , views =  $5 , submits =  $6 , confirms =  $7 , revenue =  $8 , payout =  $9 , auctions =  $10  WHERE day_id =  $11  AND p =  $12  AND search_term =  $13  AND is_new_user =  $14
+*  paramColumnNames=day_id|p|search_term|is_new_user|views|submits|confirms|revenue|payout|auctions
+*  paramTypeNames=int4|int8|varchar|int2|int8|int8|int8|int8|int8|int8|int4|int8|varchar|int2
+*  paramInfoIndices=1|2|3|4|5|6|7|8|9|10|-1|-2|-3|-4
+*  numParamTypes=14
+*  index=1
+* ================================ DELETE ==============
+* delete queryinfo: query=DELETE FROM public.check_delete  WHERE day_id =  $1  AND p =  $2  AND search_term =  $3  AND is_new_user =  $4
+*  paramColumnNames=day_id|p|search_term|is_new_user
+*  paramTypeNames=int4|int8|varchar|int2
+*  paramInfoIndices=-1|-2|-3|-4
+*  numParamTypes=4
+*  index=2
+* </pre>
+*/
