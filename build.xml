@@ -153,19 +153,10 @@
     <!-- =============================================== -->
     <!-- Jar package                                     -->
     <!-- =============================================== -->
-    <target name="jar" description="makes jar" depends="compile, compile-test, make-hibernate-config">
+    <target name="jar" description="makes jar" depends="compile, make-hibernate-config">
         <!-- <antcall target="schemaexport"/> -->
         <mkdir dir="${dir.release}"/>
         <jar destfile="${dir.release}/${jarfilename}" basedir="${dir.classes}">
-            <manifest>
-                <attribute name="Vendor" value="Vendare NetBlue, Inc"/>
-                <attribute name="Vendor-Id" value="com.netblue"/>
-                <attribute name="Implementation-Version" value="${bruce.version}"/>
-                <attribute name="Build-ID" value="${label}"/>
-                <attribute name="Build-Date" value="${cvstimestamp}"/>
-            </manifest>
-        </jar>
-        <jar destfile="${dir.release}/${testjarfilename}" basedir="${dir.test.classes}">
             <manifest>
                 <attribute name="Vendor" value="Vendare NetBlue, Inc"/>
                 <attribute name="Vendor-Id" value="com.netblue"/>
@@ -185,7 +176,7 @@
         </jar>
     </target>
     
-    <target name="release" depends="clean, jar, test, docs">
+    <target name="release" depends="clean, jar, docs">
         <property name="dir.package" location="${dir.release}/bruce-${bruce.version}"/>
         <mkdir dir="${dir.package}"/>
         <copy todir="${dir.package}">
