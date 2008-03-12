@@ -42,6 +42,7 @@ import javax.sql.DataSource;
 import java.lang.ClassNotFoundException ;
 import java.lang.InstantiationException ;
 import java.lang.IllegalAccessException ;
+import java.lang.RuntimeException ;
 
 /**
  * Responsible for obtaining {@link com.netblue.bruce.Snapshot}s from the <code>SnapshotCache</code>
@@ -272,7 +273,7 @@ public class SlaveRunner implements Runnable {
         }
     }
 
-    private void doWork()throws SQLException {
+    private void doWork()throws Exception {
         final Snapshot nextSnapshot = getNextSnapshot();
         if (nextSnapshot != null){
             processSnapshot(nextSnapshot);
@@ -326,7 +327,7 @@ public class SlaveRunner implements Runnable {
      *
      * @param snapshot the <code>Snapshot</code> to process
      */
-    protected void processSnapshot(final Snapshot snapshot) throws SQLException {
+    protected void processSnapshot(final Snapshot snapshot) throws Exception {
         logMem(
             "Last processed snapshot: " + lastProcessedSnapshot + 
             " new snapshot: "+snapshot );
@@ -374,7 +375,7 @@ public class SlaveRunner implements Runnable {
      *
      * @param snapshot A {@link com.netblue.bruce.Snapshot} containing the latest master snapshot.
      */
-    private void applyAllChangesForTransaction2(final Snapshot snapshot) throws SQLException {
+    private void applyAllChangesForTransaction2(final Snapshot snapshot) throws Exception {
         // This method is part of a larger transaction.  We don't validate/get
         // the connection here, because if the connection becomes invalid as a
         // part of that larger transaction, we're screwed anyway and we don't
@@ -439,7 +440,7 @@ public class SlaveRunner implements Runnable {
 
     private void applyChanges( 
         ArrayList<TransactionLogRow> txrows, final Snapshot snapshot, Connection masterC ) 
-    throws SQLException {
+    throws Exception {
         LOGGER.trace("Processing changes for chunk of " +txrows.size());
         for( TransactionLogRow tlr : txrows ){
             TransactionID tid = tlr.getXaction();
@@ -470,7 +471,12 @@ public class SlaveRunner implements Runnable {
             applyTransactionsStatement.setString(4, queryParams.getParamTypeNames());
             applyTransactionsStatement.setString(5, queryParams.getParamInfoIndices());
             applyTransactionsStatement.setString(6, tlr.getInfo());
-            applyTransactionsStatement.execute();
+            try{
+                applyTransactionsStatement.execute();
+            }catch(Exception e){
+                throw new RuntimeException( 
+                    "could not apply change. "+debug_detail+" queryParams: "+queryParams, e);
+            }
         }
     }
 
