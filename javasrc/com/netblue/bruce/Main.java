@@ -123,8 +123,6 @@ public class Main
     static void daemonize()
     {
         getPidFile().deleteOnExit();
-        System.out.close();
-        System.err.close();
     }
 
     /**
