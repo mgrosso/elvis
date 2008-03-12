@@ -40,7 +40,7 @@ public class QueryCache {
         return " $" + p + " ";
     }
     
-    public QueryParams getQueryInfo(String commandType, String schTableName, String infoString, Connection masterConn) throws SQLException {
+    public QueryParams getQueryInfo(String commandType, String schTableName, String infoString, Connection masterConn) throws Exception {
         String tableCommand = schTableName + PIPE_DLIMITER + commandType;
         
         // first check if we have already processed this query
@@ -50,7 +50,7 @@ public class QueryCache {
             return queryList.get(index);
         }
         else {
-            //LOGGER.trace("making query for "+tableCommand);
+            LOGGER.trace("making query for "+tableCommand);
             // get the schema and table name
             String[] tokens = schTableName.split("\\.");
             String schemaName = tokens[0];
@@ -64,22 +64,21 @@ public class QueryCache {
             Set<String> uniqCols = new HashSet<String>();
             String colStr;
             
+            boolean uniqFound=false;
+            String result ="";
+
             if (resultSet.next()) {
-                String result = resultSet.getString(1);
-                
-                
-//                int startIndex = result.indexOf("(\"");;
-//                if (startIndex > 0) {
-//                    colStr = result.substring(startIndex+2, result.indexOf("\")"));
-//                }
-//                else {
-//                    startIndex = result.indexOf("(");
-//                    colStr = result.substring(startIndex+1, result.indexOf(")"));
-//                }
-                
+                result = resultSet.getString(1);
                 String[] uniqColumnsArr = ConstructWhereClauseUtil.getUniqColumns(ConstructWhereClauseUtil.getStuffInsideBrackets(result));
-                if(uniqColumnsArr != null && uniqColumnsArr.length != 0)
+                if(uniqColumnsArr != null && uniqColumnsArr.length != 0){
                 	uniqCols.addAll(Arrays.asList(uniqColumnsArr));
+                } 
+            }
+            char command = commandType.charAt(0);
+            if(uniqCols.size()==0 && ( command == DELETE_COMMAND_TYPE || command == UPDATE_COMMAND_TYPE )){
+                throw new RuntimeException( 
+                    "no unique columns found for delete or update command (this would be ok for insert). table+command=" 
+                    + tableCommand+" query="+UNIQ_INDX_QUERY );
             }
             
             // parse the info string and create the query and param types
@@ -88,7 +87,8 @@ public class QueryCache {
             queryList.add(queryParams);
             queryParams.setIndex(queryList.size()-1);
             tableCommandMap.put(tableCommand, queryParams.getIndex());
-            //LOGGER.trace("created at index "+queryParams.getIndex()+" for "+tableCommand);
+            LOGGER.debug("created at index "+queryParams.getIndex()+" for "+tableCommand +
+                " uniq columns found were ["+result+"] and so queryParams: "+queryParams);
             return queryParams;
         }
     }
@@ -239,7 +239,7 @@ public class QueryCache {
         queryList = new ArrayList<QueryParams>(1024);        
     }
     
-    public static void main(String[] args) throws SQLException {
+    public static void main(String[] args) throws Exception {
 //	Make sure you have following table in the database you entered in the commandline
 //    	CREATE TABLE test1
 //    	(
