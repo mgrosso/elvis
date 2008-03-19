@@ -542,6 +542,7 @@ static statement_cache_item * get_or_make_cache_item(
         const char *param_info_indices_delimited
         ){
         statement_cache_item *giveback;
+        char *item_debug;
         giveback = get_cached_item(cache_index );
         if(giveback != NULL ){
             return giveback;
@@ -553,6 +554,9 @@ static statement_cache_item * get_or_make_cache_item(
                         param_info_indices_delimited
                         );
         store_cache_item(cache_index,giveback);
+        item_debug=debug_cache_item(giveback);
+        ereport(INFO,(errmsg_internal("elvis.c caching query at index=%u cache=%s", cache_index,item_debug)));
+        bruce_free(giveback);
         return giveback;
 }
 
@@ -745,7 +749,10 @@ static void applyLogTransaction2_inner(
             ! change_info || ! *change_info || 
             ! param_type_names_delimited  || ! *param_type_names_delimited ||
             ! param_info_indices_delimited  || ! *param_info_indices_delimited ) {
-        ereport(ERROR,(errmsg_internal("null or zero length argument")));
+        ereport(ERROR,(errmsg_internal(
+            "null or zero length argument: cache_index=%u, num_params=%u, query_string{%s}, type_names=%s, indices=%s, info=%s",
+            cache_index,num_params,query_string,param_type_names_delimited,
+            param_info_indices_delimited,change_info)));
     }
     //0- create the cache item if it does not exist already.
     //1- parse the change_info, placing pointers to base64 of old and new values into old/new arrays

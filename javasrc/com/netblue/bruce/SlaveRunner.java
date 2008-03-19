@@ -38,7 +38,8 @@ import java.sql.SQLException;
 import static java.text.MessageFormat.format;
 import java.util.ArrayList;
 import java.util.HashSet;
-import javax.sql.DataSource;
+import java.util.SortedSet;
+import java.util.TreeSet;
 import java.lang.ClassNotFoundException ;
 import java.lang.InstantiationException ;
 import java.lang.IllegalAccessException ;
@@ -83,6 +84,7 @@ public class SlaveRunner implements Runnable {
         sleepTime = properties.getIntProperty(NEXT_SNAPSHOT_UNAVAILABLE_SLEEP_KEY, NEXT_SNAPSHOT_UNAVAILABLE_SLEEP_DEFAULT);
         errorSleepTime = properties.getIntProperty(ERROR_SLEEP_KEY, ERROR_SLEEP_DEFAULT);
         transactionLogFetchSize  = properties.getIntProperty( TRANSACTIONLOG_FETCH_SIZE_KEY, TRANSACTIONLOG_FETCH_SIZE_DEFAULT );
+        inListSize  = properties.getIntProperty( INLIST_SIZE_KEY, INLIST_SIZE_DEFAULT );
 
         plusNSnapshotQuery = properties.getProperty( PLUSN_SNAPSHOT_QUERY_KEY, PLUSN_SNAPSHOT_QUERY_DEFAULT);
         getOutstandingTransactionsQuery = properties.getProperty(GET_OUTSTANDING_TRANSACTIONS_KEY,GET_OUTSTANDING_TRANSACTIONS_DEFAULT);
@@ -306,7 +308,7 @@ public class SlaveRunner implements Runnable {
         long free = r.freeMemory();
         long total = r.totalMemory();
         long used = total-free;
-        LOGGER.trace( "("+msg+") memory stats: max="+max+" free="+free+" total="+total+" used="+used);
+        LOGGER.info( "("+msg+") memory stats: max="+max+" free="+free+" total="+total+" used="+used);
     }
 
     /**
@@ -328,14 +330,13 @@ public class SlaveRunner implements Runnable {
      * @param snapshot the <code>Snapshot</code> to process
      */
     protected void processSnapshot(final Snapshot snapshot) throws Exception {
-        logMem(
-            "Last processed snapshot: " + lastProcessedSnapshot + 
-            " new snapshot: "+snapshot );
+        logMem( "Last processed snapshot: " + lastProcessedSnapshot + " new snapshot: "+snapshot );
         slaveConnection.setSavepoint();
         applyAllChangesForTransaction2(snapshot);
         updateSnapshotStatus(snapshot);
         slaveConnection.commit();
         this.lastProcessedSnapshot = snapshot;
+        logMem( "committed all between snapshots: " + lastProcessedSnapshot + " and new snapshot: "+snapshot );
     }
 
     /**
@@ -376,50 +377,80 @@ public class SlaveRunner implements Runnable {
      * @param snapshot A {@link com.netblue.bruce.Snapshot} containing the latest master snapshot.
      */
     private void applyAllChangesForTransaction2(final Snapshot snapshot) throws Exception {
-        // This method is part of a larger transaction.  We don't validate/get
-        // the connection here, because if the connection becomes invalid as a
-        // part of that larger transaction, we're screwed anyway and we don't
-        // want to create a new connection for just part of the transaction
+        // This method is part of a larger slave side transaction.  We don't
+        // validate/get the connection here, because if the connection becomes
+        // invalid as a part of that larger transaction, we're screwed anyway
+        // and we don't want to create a new connection for just part of the
+        // transaction
         if (snapshot == null) {
             LOGGER.trace("Latest Master snapshot is null");
             return;
         } 
 
-        LOGGER.trace("getting transactions for snapshot with current xid: "
-                +snapshot.getCurrentXid());
+        //starting with older  in progress xids that are not in newer in progress list.
+        SortedSet<TransactionID> outstanding  = new TreeSet<TransactionID> (lastProcessedSnapshot.getInProgressXids());
+        outstanding.removeAll( snapshot.getInProgressXids());
+
+        int inlistCount = 0;
+        final String start = "select * from bruce.transactionlog where xaction in ( ";
+        final String end   = ") order by rowid asc";
+        StringBuffer inlistBuf = new StringBuffer(start);
+        for( TransactionID t: outstanding ){
+            //in the common case, this is the same as t >= last.getCurrentXid()
+            //except that there is no >= operator for these.
+            int comp = t.compareTo(lastProcessedSnapshot.getCurrentXid());
+            if( comp >= 0 ){
+                continue;
+            }
+            if( inlistCount > 0 ){
+                inlistBuf.append(",");
+            }
+            inlistBuf.append(t);
+            if( ++inlistCount >= inListSize ){
+                inlistBuf.append(end);
+                applyAllChangesForSQL( inlistBuf.toString(),snapshot);
+                inlistBuf = new StringBuffer(start);
+                inlistCount=0;
+            }
+        }
+        if( inlistCount > 0 ){
+            inlistBuf.append(end);
+            applyAllChangesForSQL( inlistBuf.toString(),snapshot);
+        }
 
         masterConnection.setSavepoint();
         getOutstandingTransactionsStatement.setFetchSize(transactionLogFetchSize);
         getOutstandingTransactionsStatement.setLong(
-                1,lastProcessedSnapshot.getMinXid().getLong());
+                1,lastProcessedSnapshot.getCurrentXid().getLong());
         getOutstandingTransactionsStatement.setLong(
                 2,snapshot.getMaxXid().getLong());
         ResultSet txrs = capture(getOutstandingTransactionsStatement.executeQuery());
+        applyAllChangesForResultSet(txrs,snapshot);
+        release(txrs);
+        masterConnection.rollback();
+    }
 
+    private void applyAllChangesForSQL(final String sql,final Snapshot snapshot) throws Exception {
+        LOGGER.trace("applying transactions for: " + sql );
+        masterConnection.setSavepoint();
+        PreparedStatement s = capture(masterConnection.prepareStatement(sql));
+        s.setFetchSize(transactionLogFetchSize);
+        ResultSet rs = capture(s.executeQuery());
+        applyAllChangesForResultSet(rs,snapshot);
+        release(rs);
+        masterConnection.rollback();
+    }
+
+    private void applyAllChangesForResultSet(final ResultSet results,final Snapshot snapshot) throws Exception {
         ArrayList<TransactionLogRow> txrows = new ArrayList<TransactionLogRow>(transactionLogFetchSize);
-        txrows=pullChanges( txrs, txrows, transactionLogFetchSize );
-        if(txrows.size()<transactionLogFetchSize){
-            //good, we can release master resources asap 
-            LOGGER.trace("release master db resources early.");
-            release(txrs);
-            masterConnection.rollback();
+        txrows=pullChanges( results, txrows, transactionLogFetchSize );
+        while(txrows.size()>0){
             applyChanges(txrows,snapshot,masterConnection);
-        }else{
-            //we have a backlog of more than x rows, so we'll have to keep our
-            //master connection open while we update the child. this is to
-            //avoid having the memory size of the daemon need to be the sum of the 
-            //backlog size of all the slaves.
-            while(txrows.size()>0){
-                applyChanges(txrows,snapshot,masterConnection);
-                if(txrows.size()==transactionLogFetchSize){
-                    txrows=pullChanges( txrs, txrows, transactionLogFetchSize );
-                }else{
-                    break;
-                }
+            if(txrows.size()==transactionLogFetchSize){
+                txrows=pullChanges( results, txrows, transactionLogFetchSize );
+            }else{
+                break;
             }
-            LOGGER.trace("... and finally release master db resources.");
-            release(txrs);
-            masterConnection.rollback();
         }
     }
 
@@ -441,7 +472,7 @@ public class SlaveRunner implements Runnable {
     private void applyChanges( 
         ArrayList<TransactionLogRow> txrows, final Snapshot snapshot, Connection masterC ) 
     throws Exception {
-        LOGGER.trace("Processing changes for chunk of " +txrows.size());
+        LOGGER.debug("Processing changes for chunk of " +txrows.size()+ " snapshot "+snapshot);
         for( TransactionLogRow tlr : txrows ){
             TransactionID tid = tlr.getXaction();
             // Skip transactions not between snapshots
@@ -615,6 +646,7 @@ public class SlaveRunner implements Runnable {
     private int sleepTime;
     private int errorSleepTime;
     private int transactionLogFetchSize;
+    private int inListSize;
     private String selectLastSnapshotQuery;
     private String updateLastSnapshotQuery;
     private String slaveTransactionIdQuery;
@@ -724,7 +756,10 @@ public class SlaveRunner implements Runnable {
 
     private static final String TRANSACTIONLOG_FETCH_SIZE_KEY = "bruce.transactionLogFetchSize";
     private static int TRANSACTIONLOG_FETCH_SIZE_DEFAULT = 5000;
-    
+
+    private static final String INLIST_SIZE_KEY = "bruce.inlistSizeKey";
+    private static int INLIST_SIZE_DEFAULT = 50;
+
     private static final long[] snaphot_query_sizes = new long []{2000L, 500L,125L,25L,5L,3L,2L,1L} ;
     private QueryCache queryCache;
 }

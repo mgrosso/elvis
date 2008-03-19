@@ -28,6 +28,7 @@ import java.io.Serializable;
 import java.text.MessageFormat;
 import java.util.SortedSet;
 import java.util.TreeSet;
+import java.util.Collections ;
 
 /**
  * A Snapshot represents a point in time on the replication master. It is defined by:
@@ -178,6 +179,13 @@ public class Snapshot implements Comparable, Serializable
     public TransactionID getMaxXid()
     {
         return maxXid;
+    }
+
+    /** 
+     * @return a read only version of the inProgressXids 
+     */
+    public SortedSet<TransactionID> getInProgressXids(){
+        return Collections.unmodifiableSortedSet( inProgressXids );
     }
 
     /**
