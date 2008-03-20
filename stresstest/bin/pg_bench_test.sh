@@ -355,7 +355,6 @@ function check_heartbeat(){
 
 
 stop_any_running_db 
-exit 
 maketop
 foreach_node makedb
 foreach_cluster setup_cluster
