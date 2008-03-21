@@ -423,7 +423,7 @@ static void callback_param_index( statement_cache_item *cache_item, int param, c
     long int c = strtol(field_value,&endptr,10);
     if( c==0 || *field_value=='\0' || !endptr || *endptr != '\0' ){
         ereport(ERROR,(errmsg_internal(
-            "bruce error, applyLogTransaction2 could convert to int index %d for query paramater[%s]", 
+            "bruce error, applyLogTransaction2 could not convert to int index %d for query paramater[%s]", 
             param,field_value)));
     }
     //
@@ -463,7 +463,7 @@ static void parse_delimited( const char *original, char *delimited, char **dest,
         dest[i] = strsep(&strseparg,delimiters);
     }
     if( strseparg || i != expected_fields ){
-        ereport(ERROR,(errmsg_internal("bruce error, applyLogTransaction2 could not parse %s with delimiter %s into %d args.",
+        ereport(ERROR,(errmsg_internal("bruce error, applyLogTransaction2 could not parse %s with delimiter %s into %zu args.",
             original, delimiters, expected_fields )));
     }
     for(i=0; i< expected_fields; ++i ){
@@ -555,7 +555,7 @@ static statement_cache_item * get_or_make_cache_item(
                         );
         store_cache_item(cache_index,giveback);
         item_debug=debug_cache_item(giveback);
-        ereport(INFO,(errmsg_internal("elvis.c caching query at index=%u cache=%s", cache_index,item_debug)));
+        ereport(INFO,(errmsg_internal("elvis.c caching query at index=%zu cache=%s", cache_index,item_debug)));
         bruce_free(giveback);
         return giveback;
 }
@@ -610,12 +610,12 @@ static void parse_change_info(statement_cache_item *item,char *change_info){
         for(skip=2; skip && c && *c; --skip ){
             c=strchr(c,':');
             if(!c || !*c || *c != ':' ){
-                ereport(ERROR,(errmsg_internal("could not parse info string: problem skipping first two. field=%u first part of info string=%s", f,change_info)));
+                ereport(ERROR,(errmsg_internal("could not parse info string: problem skipping first two. field=%zu first part of info string=%s", f,change_info)));
             }
             ++c;//move past : to start of type description or start of raw_old
         }
         if(!c || !*c || *c=='|' ){
-            ereport(ERROR,(errmsg_internal("could not parse info string: raw_old looks wrong. field=%u first part of info string=%s", f,change_info)));
+            ereport(ERROR,(errmsg_internal("could not parse info string: raw_old looks wrong. field=%zu first part of info string=%s", f,change_info)));
         }
         //   "id:int8:MTA4Nw==:MTA4Nw==|site_id:int8:MTA2:MTA2"
         //            c
@@ -627,7 +627,7 @@ static void parse_change_info(statement_cache_item *item,char *change_info){
             c=strchr(c,':');
         }
         if(!c || !*c || *c!=':' ){
-            ereport(ERROR,(errmsg_internal("could not parse info string: missing third ':'.  field=%u first part of info string: %s", f,change_info)));
+            ereport(ERROR,(errmsg_internal("could not parse info string: missing third ':'.  field=%zu first part of info string: %s", f,change_info)));
         }
         *c='\0';//null terminate the raw_old
         ++c;//advance to the first char of raw_new
@@ -635,7 +635,7 @@ static void parse_change_info(statement_cache_item *item,char *change_info){
             //the raw_new of the last field is zero length
             item->raw_new[f]=c;
         }else if( !*c || *c==':' ){
-            ereport(ERROR,(errmsg_internal("could not parse info string: raw_new looks wrong. field=%u first part of info string: %s",f,change_info)));
+            ereport(ERROR,(errmsg_internal("could not parse info string: raw_new looks wrong. field=%zu first part of info string: %s",f,change_info)));
         }
         //   "id:int8:MTA4Nw==\0MTA4Nw==|site_id:int8:MTA2:MTA2"
         //            ^         c
@@ -650,7 +650,7 @@ static void parse_change_info(statement_cache_item *item,char *change_info){
                 c=strchr(c,'|');
             }
             if( !c || !*c || *c!= '|' ){
-                ereport(ERROR,(errmsg_internal("could not parse info string: expected '|'. field=%u first part of info string: %s",f,change_info)));
+                ereport(ERROR,(errmsg_internal("could not parse info string: expected '|'. field=%zu first part of info string: %s",f,change_info)));
             }
             //   "id:int8:MTA4Nw==\0MTA4Nw==|site_id:int8:MTA2:MTA2"
             //            ^         ^       c
@@ -658,7 +658,7 @@ static void parse_change_info(statement_cache_item *item,char *change_info){
             *c='\0';
             ++c;
             if( !*c || *c== '|' || *c==':' ){
-                ereport(ERROR,(errmsg_internal("could not parse info string: expected to be on first char of next columns name. field=%u first part of info string: %s", f,change_info)));
+                ereport(ERROR,(errmsg_internal("could not parse info string: expected to be on first char of next columns name. field=%zu first part of info string: %s", f,change_info)));
             }
             //   "id:int8:MTA4Nw==\0MTA4Nw==\0site_id:int8:MTA2:MTA2"
             //            ^         ^         c
@@ -672,7 +672,7 @@ static void parse_change_info(statement_cache_item *item,char *change_info){
         }
     }
     if( f < item->num_info_columns_to_parse ){
-        ereport(ERROR,(errmsg_internal("could not parse info string: not enough columns in info string. field=%u first part of info string: %s",f,change_info)));
+        ereport(ERROR,(errmsg_internal("could not parse info string: not enough columns in info string. field=%zu first part of info string: %s",f,change_info)));
     }
 }
 
@@ -750,7 +750,7 @@ static void applyLogTransaction2_inner(
             ! param_type_names_delimited  || ! *param_type_names_delimited ||
             ! param_info_indices_delimited  || ! *param_info_indices_delimited ) {
         ereport(ERROR,(errmsg_internal(
-            "null or zero length argument: cache_index=%u, num_params=%u, query_string{%s}, type_names=%s, indices=%s, info=%s",
+            "null or zero length argument: cache_index=%zu, num_params=%zu, query_string{%s}, type_names=%s, indices=%s, info=%s",
             cache_index,num_params,query_string,param_type_names_delimited,
             param_info_indices_delimited,change_info)));
     }
@@ -775,7 +775,7 @@ Datum applyLogTransaction2(PG_FUNCTION_ARGS) {
     char *param_info_indices_delimited =  Datum2CString(PG_GETARG_DATUM(4));//pipe delimited indices into the info string, with negative numbers indicating to use old values.
     char *change_info  =                  Datum2CString(PG_GETARG_DATUM(5));// bruce.transactinlog.info string
 
-    //ereport(NOTICE,(errmsg_internal("info:%u,%u,%s,%s,%s,%s",cache_index,num_params,query_string,param_type_names_delimited,param_info_indices_delimited,change_info)));
+    ereport(NOTICE,(errmsg_internal("info:%zu,%zu,%s,%s,%s,%s",cache_index,num_params,query_string,param_type_names_delimited,param_info_indices_delimited,change_info)));
     replication_mode=MODE_DAEMON;
     applyLogTransaction2_inner(&cache_item,
         cache_index, num_params, query_string,
@@ -852,7 +852,7 @@ Datum debug_parseinfo(PG_FUNCTION_ARGS){
     }
     cache_item =  get_cached_item(cache_index);
     if ( ! cache_item  ) {
-        ereport(ERROR,(errmsg_internal("cache index %u is not initialized",cache_index)));
+        ereport(ERROR,(errmsg_internal("cache index %zu is not initialized",cache_index)));
     }
     parse_change_info(cache_item,change_info);
     decode_values(cache_item);
@@ -874,7 +874,7 @@ Datum debug_applyinfo(PG_FUNCTION_ARGS){
     }
     cache_item =  get_cached_item(cache_index);
     if ( ! cache_item  ) {
-        ereport(ERROR,(errmsg_internal("cache index %u is not initialized",cache_index)));
+        ereport(ERROR,(errmsg_internal("cache index %zu is not initialized",cache_index)));
     }
     parse_change_info(cache_item,change_info);
     ereport(NOTICE,(errmsg_internal(debug_cache_item(cache_item))));
