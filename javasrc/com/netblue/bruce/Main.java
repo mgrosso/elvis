@@ -48,12 +48,13 @@ public class Main
                 fatalError("Usage: startup.sh [cluster name]");
             }
 
-	    if (args[0].equals("-v") || args[0].equals("-version")) {
-		// We dont have log4j yet
-		System.out.println("$Id: Main.java 84 2007-09-06 22:14:54Z rklahn $");
-		System.out.println("$URL: https://svn.codehaus.org/bruce/branches/1.0/javasrc/com/netblue/bruce/Main.java $");
-		System.exit(0);
-	    }
+    //this -v is a lie. it only tells you the version of Main.java, which is not useful.
+//	    if (args[0].equals("-v") || args[0].equals("-version")) {
+//		// We dont have log4j yet
+//		System.out.println("$Id: Main.java 84 2007-09-06 22:14:54Z rklahn $");
+//		System.out.println("$URL: https://svn.codehaus.org/bruce/branches/1.0/javasrc/com/netblue/bruce/Main.java $");
+//		System.exit(0);
+//	    }
 
             // Be sure any log messages generated before we daemonize are sent to System.err
             // just in case something bad happens on startup
@@ -94,15 +95,22 @@ public class Main
                 catch (InterruptedException e) { }
             }
         }
-        catch (Throwable throwable)
+        catch (Throwable t)
         {
-            LOGGER.fatal("Exception caught.  Bailing.", throwable);
+            fatalError("Exception caught, bailing. see log4j logs for details",t );
         }
     }
 
-    private static void fatalError(String message)
-    {
+    static void fatalError(String message) {
+        LOGGER.fatal("Main.fatalError, Bailing: "+ message);
         System.err.println(message);
+        System.exit(1);
+    }
+
+    static void fatalError(String message, Throwable t) {
+        LOGGER.fatal("Exception caught.  Bailing.", t);
+        System.err.println(message + " caught Throwable: "+ t.getMessage());
+        t.printStackTrace();
         System.exit(1);
     }
 
@@ -129,8 +137,7 @@ public class Main
      * Start the <code>ReplicationDaemon</code> in its own thread
      * @param clusterName The name of the cluster that this daemon will operate under.
      */
-    private static void startReplicationDaemon(final String clusterName)
-    {
+    private static void startReplicationDaemon(final String clusterName) throws Exception {
         daemon = new ReplicationDaemon();
         LOGGER.info("Loading cluster \"" + clusterName + "\"");
         daemon.loadCluster(clusterName);
