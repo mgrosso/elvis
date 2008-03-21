@@ -108,7 +108,7 @@ public class Snapshot implements Comparable, Serializable
         this(currentTID,minTID,maxTID,new TreeSet<TransactionID>());
         if (inFlightTIDs != null)
         {
-            String[] tidSA = inFlightTIDs.split(",");
+            String[] tidSA = inFlightTIDs.replaceAll(" ","").trim().split(",");
             for (int i = 0; i < tidSA.length; i++)
             {
                 try
