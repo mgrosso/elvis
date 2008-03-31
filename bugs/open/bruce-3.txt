@@ -1,0 +1,64 @@
+
+Possible problem with the LogSwitchThread
+Created: 05/Jul/07 12:57 PM   Updated: 19/Oct/07 01:42 PM   
+Return to search
+Issue 27 of 29 issue(s)
+<< Previous | BRUCE-3 | Next >>
+Component/s:    Daemon
+Affects Version/s:  0.5
+Fix Version/s:  1.5
+
+Time Tracking:  
+Not Specified
+
+Environment:    server: rakdev. F-7 i386, Pg 8.2, Bruce r12 + some local mods to address ticket BRUCE-1
+
+
+ Description    « Hide
+First of all, Im not even sure this is a problem. Just opening a ticket for later investigation.
+
+From bruce.log, in in short order:
+
+INFO Thread-8 com.netblue.bruce.LogSwitchThread - Time to drop old tables.
+INFO Thread-8 com.netblue.bruce.LogSwitchThread - Dropping bruce.transactionlog_3 and bruce.snapshotlog_3
+INFO Thread-7 com.netblue.bruce.SlaveFactory - [Cluster One]: spawning slave thread for node: cluster one - slave zwei
+INFO Thread-7 com.netblue.bruce.SlaveFactory - [Cluster One]: spawning slave thread for node: cluster one - slave ein
+WARN cluster one - slave zwei com.netblue.bruce.SnapshotCache - Unable to obtain NEXT snapshot from database
+org.postgresql.util.PSQLException: ERROR: could not open relation with OID 16603
+at org.postgresql.core.v3.QueryExecutorImpl.receiveErrorResponse(QueryExecutorImpl.java:1525)
+at org.postgresql.core.v3.QueryExecutorImpl.processResults(QueryExecutorImpl.java:1309)
+at org.postgresql.core.v3.QueryExecutorImpl.execute(QueryExecutorImpl.java:188)
+at org.postgresql.jdbc2.AbstractJdbc2Statement.execute(AbstractJdbc2Statement.java:452)
+at org.postgresql.jdbc2.AbstractJdbc2Statement.executeWithFlags(AbstractJdbc2Statement.java:354)
+at org.postgresql.jdbc2.AbstractJdbc2Statement.executeQuery(AbstractJdbc2Statement.java:258)
+at org.apache.commons.dbcp.DelegatingPreparedStatement.executeQuery(DelegatingPreparedStatement.java:92)
+at com.netblue.bruce.SnapshotCache.getNextSnapshot(SnapshotCache.java:230)
+at com.netblue.bruce.SlaveRunner.getNextSnapshot(SlaveRunner.java:353)
+at com.netblue.bruce.SlaveRunner.run(SlaveRunner.java:203)
+at java.lang.Thread.run(Thread.java:595)
+
+ Description    
+   First of all, Im not even sure this is a problem. Just opening a ticket for later investigation. From bruce.log, in in short order: INFO Thread-8 com.netblue.bruce.LogSwitchThread - Time to drop old tables. INFO Thread-8 com.netblue.bruce.LogSwitchThread - Dropping bruce.transactionlog_3 and bruce.snapshotlog_3 INFO Thread-7 com.netblue.bruce.SlaveFactory - [Cluster One]: spawning slave thread for node: cluster one - slave zwei INFO Thread-7 com.netblue.bruce.SlaveFactory - [Cluster One]: spawning slave thread for node: cluster one - slave ein WARN cluster one - slave zwei com.netblue.bruce.SnapshotCache - Unable to obtain NEXT snapshot from database org.postgresql.util.PSQLException: ERROR: could not open relation with OID 16603 at org.postgresql.core.v3.QueryExecutorImpl.receiveErrorResponse(QueryExecutorImpl.java:1525) at org.postgresql.core.v3.QueryExecutorImpl.processResults(QueryExecutorImpl.java:1309) at org.postgresql.core.v3.QueryExecutorImpl.execute(QueryExecutorImpl.java:188) at org.postgresql.jdbc2.AbstractJdbc2Statement.execute(AbstractJdbc2Statement.java:452) at org.postgresql.jdbc2.AbstractJdbc2Statement.executeWithFlags(AbstractJdbc2Statement.java:354) at org.postgresql.jdbc2.AbstractJdbc2Statement.executeQuery(AbstractJdbc2Statement.java:258) at org.apache.commons.dbcp.DelegatingPreparedStatement.executeQuery(DelegatingPreparedStatement.java:92) at com.netblue.bruce.SnapshotCache.getNextSnapshot(SnapshotCache.java:230) at com.netblue.bruce.SlaveRunner.getNextSnapshot(SlaveRunner.java:353) at com.netblue.bruce.SlaveRunner.run(SlaveRunner.java:203) at java.lang.Thread.run(Thread.java:595)
+    Show »
+
+ All     Comments    Work Log    Change History           Sort Order: [Ascending order - Click to sort in descending order]
+[ Permlink | « Hide ]
+Robert Klahn - 05/Jul/07 06:22 PM
+Happened a second time (in the same run of the daemon, btw):
+
+INFO Thread-8 com.netblue.bruce.LogSwitchThread - Time to drop old tables.
+INFO Thread-8 com.netblue.bruce.LogSwitchThread - Dropping bruce.transactionlog_4 and bruce.snapshotlog_4
+WARN cluster one - slave zwei com.netblue.bruce.SnapshotCache - Unable to obtain NEXT snapshot from database
+org.postgresql.util.PSQLException: ERROR: could not open relation with OID 16609
+at org.postgresql.core.v3.QueryExecutorImpl.receiveErrorResponse(QueryExecutorImpl.java:1525)
+at org.postgresql.core.v3.QueryExecutorImpl.processResults(QueryExecutorImpl.java:1309)
+at org.postgresql.core.v3.QueryExecutorImpl.execute(QueryExecutorImpl.java:188)
+at org.postgresql.jdbc2.AbstractJdbc2Statement.execute(AbstractJdbc2Statement.java:452)
+at org.postgresql.jdbc2.AbstractJdbc2Statement.executeWithFlags(AbstractJdbc2Statement.java:354)
+at org.postgresql.jdbc2.AbstractJdbc2Statement.executeQuery(AbstractJdbc2Statement.java:258)
+at org.apache.commons.dbcp.DelegatingPreparedStatement.executeQuery(DelegatingPreparedStatement.java:92)
+at com.netblue.bruce.SnapshotCache.getNextSnapshot(SnapshotCache.java:230)
+at com.netblue.bruce.SlaveRunner.getNextSnapshot(SlaveRunner.java:353)
+at com.netblue.bruce.SlaveRunner.run(SlaveRunner.java:203)
+at java.lang.Thread.run(Thread.java:595)
+

@@ -1,0 +1,84 @@
+admin tool WARNINGS/ERRORS
+Created: 30/Jul/07 12:46 PM   Updated: 19/Oct/07 01:42 PM   
+Return to search
+Issue 24 of 29 issue(s)
+<< Previous | BRUCE-6 | Next >>
+Component/s:    Admin Tool
+Affects Version/s:  0.5
+Fix Version/s:  1.5
+
+Time Tracking:  
+Not Specified
+
+
+ Description    « Hide
+In each case, the admin tool appears to have worked correctly, other than the error displays
+
+ 
+[bruce@rakdev-db-bimp ~]$ bruce-0.5/bin/admin.sh -loadschema -url 'jdbc:postgresql://localhost:5432/bruce_config?user=bruce&password=*********'
+Using JAVA_HOME:      /usr/java/jdk1.5.0_12
+WARN main com.netblue.bruce.admin.DatabaseBuilder - Exception executing SQL: ERROR: relation "bruce.node_cluster" does not exist
+WARN main com.netblue.bruce.admin.DatabaseBuilder - Exception executing SQL: ERROR: relation "bruce.node_cluster" does not exist
+WARN main com.netblue.bruce.admin.DatabaseBuilder - Exception executing SQL: ERROR: relation "bruce.yf_cluster" does not exist
+WARN main com.netblue.bruce.admin.DatabaseBuilder - Exception executing SQL: ERROR: table "node_cluster" does not exist
+WARN main com.netblue.bruce.admin.DatabaseBuilder - Exception executing SQL: ERROR: table "yf_cluster" does not exist
+WARN main com.netblue.bruce.admin.DatabaseBuilder - Exception executing SQL: ERROR: table "yf_node" does not exist
+WARN main com.netblue.bruce.admin.DatabaseBuilder - Exception executing SQL: ERROR: sequence "hibernate_sequence" does not exist
+
+ERROR main com.netblue.bruce.admin.Version - org.postgresql.util.PSQLException: ERROR: schema "bruce" does not exist
+WARN main com.netblue.bruce.admin.DatabaseBuilder - Exception executing SQL: ERROR: schema "bruce" does not exist
+WARN main com.netblue.bruce.admin.DatabaseBuilder - Exception executing SQL: ERROR: table "replication_version" does not exist
+WARN main com.netblue.bruce.admin.DatabaseBuilder - Exception executing SQL: ERROR: table "currentlog" does not exist
+WARN main com.netblue.bruce.admin.DatabaseBuilder - Exception executing SQL: ERROR: view "snapshotlog" does not exist
+WARN main com.netblue.bruce.admin.DatabaseBuilder - Exception executing SQL: ERROR: table "snapshotlog_1" does not exist
+WARN main com.netblue.bruce.admin.DatabaseBuilder - Exception executing SQL: ERROR: view "transactionlog" does not exist
+WARN main com.netblue.bruce.admin.DatabaseBuilder - Exception executing SQL: ERROR: table "transactionlog_1" does not exist
+WARN main com.netblue.bruce.admin.DatabaseBuilder - Exception executing SQL: ERROR: table "slavesnapshotstatus" does not exist
+WARN main com.netblue.bruce.admin.DatabaseBuilder - Exception executing SQL: ERROR: index "transactionlog_1_xaction_idx" does not exist
+WARN main com.netblue.bruce.admin.DatabaseBuilder - Exception executing SQL: ERROR: function bruce.applylogtransaction(text, text, text) does not exist
+WARN main com.netblue.bruce.admin.DatabaseBuilder - Exception executing SQL: ERROR: function bruce.daemonmode() does not exist
+WARN main com.netblue.bruce.admin.DatabaseBuilder - Exception executing SQL: ERROR: function bruce.denyaccesstrigger() does not exist
+WARN main com.netblue.bruce.admin.DatabaseBuilder - Exception executing SQL: ERROR: function bruce.logsnapshottrigger() does not exist
+WARN main com.netblue.bruce.admin.DatabaseBuilder - Exception executing SQL: ERROR: function bruce.logsnapshot() does not exist
+WARN main com.netblue.bruce.admin.DatabaseBuilder - Exception executing SQL: ERROR: function bruce.logtransactiontrigger() does not exist
+WARN main com.netblue.bruce.admin.DatabaseBuilder - Exception executing SQL: ERROR: function bruce.normalmode() does not exist
+WARN main com.netblue.bruce.admin.DatabaseBuilder - Exception executing SQL: ERROR: sequence "currentlog_id_seq" does not exist
+WARN main com.netblue.bruce.admin.DatabaseBuilder - Exception executing SQL: ERROR: sequence "transactionlog_rowseq" does not exist
+
+
+ Description    
+   In each case, the admin tool appears to have worked correctly, other than the error displays
+
+ 
+[bruce@rakdev-db-bimp ~]$ bruce-0.5/bin/admin.sh -loadschema -url 'jdbc:postgresql://localhost:5432/bruce_config?user=bruce&password=*********'
+Using JAVA_HOME:      /usr/java/jdk1.5.0_12
+WARN main com.netblue.bruce.admin.DatabaseBuilder - Exception executing SQL: ERROR: relation "bruce.node_cluster" does not exist
+WARN main com.netblue.bruce.admin.DatabaseBuilder - Exception executing SQL: ERROR: relation "bruce.node_cluster" does not exist
+WARN main com.netblue.bruce.admin.DatabaseBuilder - Exception executing SQL: ERROR: relation "bruce.yf_cluster" does not exist
+WARN main com.netblue.bruce.admin.DatabaseBuilder - Exception executing SQL: ERROR: table "node_cluster" does not exist
+WARN main com.netblue.bruce.admin.DatabaseBuilder - Exception executing SQL: ERROR: table "yf_cluster" does not exist
+WARN main com.netblue.bruce.admin.DatabaseBuilder - Exception executing SQL: ERROR: table "yf_node" does not exist
+WARN main com.netblue.bruce.admin.DatabaseBuilder - Exception executing SQL: ERROR: sequence "hibernate_sequence" does not exist
+
+ERROR main com.netblue.bruce.admin.Version - org.postgresql.util.PSQLException: ERROR: schema "bruce" does not exist
+WARN main com.netblue.bruce.admin.DatabaseBuilder - Exception executing SQL: ERROR: schema "bruce" does not exist
+WARN main com.netblue.bruce.admin.DatabaseBuilder - Exception executing SQL: ERROR: table "replication_version" does not exist
+WARN main com.netblue.bruce.admin.DatabaseBuilder - Exception executing SQL: ERROR: table "currentlog" does not exist
+WARN main com.netblue.bruce.admin.DatabaseBuilder - Exception executing SQL: ERROR: view "snapshotlog" does not exist
+WARN main com.netblue.bruce.admin.DatabaseBuilder - Exception executing SQL: ERROR: table "snapshotlog_1" does not exist
+WARN main com.netblue.bruce.admin.DatabaseBuilder - Exception executing SQL: ERROR: view "transactionlog" does not exist
+WARN main com.netblue.bruce.admin.DatabaseBuilder - Exception executing SQL: ERROR: table "transactionlog_1" does not exist
+WARN main com.netblue.bruce.admin.DatabaseBuilder - Exception executing SQL: ERROR: table "slavesnapshotstatus" does not exist
+WARN main com.netblue.bruce.admin.DatabaseBuilder - Exception executing SQL: ERROR: index "transactionlog_1_xaction_idx" does not exist
+WARN main com.netblue.bruce.admin.DatabaseBuilder - Exception executing SQL: ERROR: function bruce.applylogtransaction(text, text, text) does not exist
+WARN main com.netblue.bruce.admin.DatabaseBuilder - Exception executing SQL: ERROR: function bruce.daemonmode() does not exist
+WARN main com.netblue.bruce.admin.DatabaseBuilder - Exception executing SQL: ERROR: function bruce.denyaccesstrigger() does not exist
+WARN main com.netblue.bruce.admin.DatabaseBuilder - Exception executing SQL: ERROR: function bruce.logsnapshottrigger() does not exist
+WARN main com.netblue.bruce.admin.DatabaseBuilder - Exception executing SQL: ERROR: function bruce.logsnapshot() does not exist
+WARN main com.netblue.bruce.admin.DatabaseBuilder - Exception executing SQL: ERROR: function bruce.logtransactiontrigger() does not exist
+WARN main com.netblue.bruce.admin.DatabaseBuilder - Exception executing SQL: ERROR: function bruce.normalmode() does not exist
+WARN main com.netblue.bruce.admin.DatabaseBuilder - Exception executing SQL: ERROR: sequence "currentlog_id_seq" does not exist
+WARN main com.netblue.bruce.admin.DatabaseBuilder - Exception executing SQL: ERROR: sequence "transactionlog_rowseq" does not exist
+
+    Show »
+

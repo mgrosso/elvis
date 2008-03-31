@@ -1,0 +1,36 @@
+Make postgres port overridable from the environment
+Created: 18/Jul/07 04:48 PM   Updated: 24/Jul/07 01:31 PM   
+Return to search
+Issue 26 of 29 issue(s)
+<< Previous | BRUCE-4 | Next >>
+Component/s:    None
+Affects Version/s:  0.5
+Fix Version/s:  0.5
+
+Time Tracking:  
+Not Specified
+
+
+ Description    « Hide
+Currently postgres.properties defines the postgresql.port property. But not all build targets seem to use this property. Also it will be nice to have this property overridden by the environment so that in a multiuser environment, users can still build without having to change the property file and stepping on each other's builds.
+ Description    
+   Currently postgres.properties defines the postgresql.port property. But not all build targets seem to use this property. Also it will be nice to have this property overridden by the environment so that in a multiuser environment, users can still build without having to change the property file and stepping on each other's builds.
+    Show »
+
+ All     Comments    Work Log    Change History           Sort Order: [Ascending order - Click to sort in descending order]
+[ Permlink | « Hide ]
+Lance Ball - 18/Jul/07 05:07 PM
+The build will succeed with a port override using -Dpostgresql.port=XXXX on the command line. E.g.
+
+$ ant -Dpostgresql.port=15432 clean test-reports
+
+This command will build the system, run all unit tests against the postgres server on port 15432 and generate reports.
+
+Currently, there are a number (~15) of unit test failures that appear related to the port change. Those still need to be fixed.
+[ Show » ]
+Lance Ball - 18/Jul/07 05:07 PM The build will succeed with a port override using -Dpostgresql.port=XXXX on the command line. E.g. $ ant -Dpostgresql.port=15432 clean test-reports This command will build the system, run all unit tests against the postgres server on port 15432 and generate reports. Currently, there are a number (~15) of unit test failures that appear related to the port change. Those still need to be fixed.
+
+[ Permlink | « Hide ]
+Lance Ball - 24/Jul/07 01:31 PM
+Fixed for both 0.5 and in trunk in revision 48.
+

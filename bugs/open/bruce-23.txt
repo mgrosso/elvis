@@ -1,0 +1,75 @@
+Key:     BRUCE-23
+Type:   Bug Bug
+Status:     Open Open
+Priority:   Critical Critical
+Assignee:   Robert Klahn
+Reporter:   Robert Klahn
+Votes:  0
+Watchers:   0
+Operations
+
+If you were logged in you would be able to see more operations.
+    
+Bruce
+LogSwitchThread dies when master database is down at the time of the switch
+Created: 06/Nov/07 02:08 PM   Updated: 06/Nov/07 02:09 PM   
+Return to search
+Issue 7 of 29 issue(s)
+<< Previous | BRUCE-23 | Next >>
+Component/s:    Daemon
+Affects Version/s:  1.0
+Fix Version/s:  1.5
+
+Time Tracking:  
+Not Specified
+
+
+ Description    « Hide
+Problem: When the master database is down, and a log switch is attempted, the LogSwitch thread terminates, and logs are no longer switched.
+
+Workaround #1: While the database remains up, bring down the daemon, and start it with a value of the bruce.retainTime property set greater than the time the most recent log was created. The value of bruce.retainTime is in minutes, i.e. a value of 20160 means 14 days (14days*24hours*60minutes=20160minutes). Once each slave has moved beyond the transactions captured in the ex-most recent log (when the daemon is restarted, a new transaction/snapshot log should be created), it is safe to restart the daemon with its default value of 5 days (7200 minutes)
+
+Workaround #2: Restart the daemon soon after the master database is restarted.
+
+2007-10-10 15:07:19,927:INFO db-bimp.ww - Slave new-db-bimp-mirror.ww com.netblue.bruce.SlaveRunner 
+- Can not obtain next Snapshot due to SQLException
+org.postgresql.util.PSQLException: FATAL: the database system is starting up
+        at org.postgresql.core.v3.ConnectionFactoryImpl.doAuthentication(ConnectionFactoryImpl.java:
+275)
+        at org.postgresql.core.v3.ConnectionFactoryImpl.openConnectionImpl(ConnectionFactoryImpl.jav
+a:94)
+        at org.postgresql.core.ConnectionFactory.openConnection(ConnectionFactory.java:65)
+        at org.postgresql.jdbc2.AbstractJdbc2Connection.<init>(AbstractJdbc2Connection.java:116)
+        at org.postgresql.jdbc3.AbstractJdbc3Connection.<init>(AbstractJdbc3Connection.java:30)
+        at org.postgresql.jdbc3.Jdbc3Connection.<init>(Jdbc3Connection.java:24)
+        at org.postgresql.Driver.makeConnection(Driver.java:369)
+        at org.postgresql.Driver.connect(Driver.java:245)
+        at org.apache.commons.dbcp.DriverConnectionFactory.createConnection(DriverConnectionFactory.
+java:37)
+        at org.apache.commons.dbcp.PoolableConnectionFactory.makeObject(PoolableConnectionFactory.ja
+va:290)
+        at org.apache.commons.pool.impl.GenericObjectPool.borrowObject(GenericObjectPool.java:840)
+        at org.apache.commons.dbcp.PoolingDataSource.getConnection(PoolingDataSource.java:95)
+        at org.apache.commons.dbcp.BasicDataSource.getConnection(BasicDataSource.java:540)
+        at com.netblue.bruce.SlaveRunner.getNextSnapshot(SlaveRunner.java:401)
+        at com.netblue.bruce.SlaveRunner.run(SlaveRunner.java:221)
+        at java.lang.Thread.run(Thread.java:595)
+2007-10-10 15:08:17,681:ERROR LogSwitch com.netblue.bruce.LogSwitchThread - SQLException in the log 
+thread. Shutting down thread.
+org.postgresql.util.PSQLException: An I/O error occured while sending to the backend.
+        at org.postgresql.core.v3.QueryExecutorImpl.execute(QueryExecutorImpl.java:214)
+        at org.postgresql.jdbc2.AbstractJdbc2Statement.execute(AbstractJdbc2Statement.java:452)
+        at org.postgresql.jdbc2.AbstractJdbc2Statement.executeWithFlags(AbstractJdbc2Statement.java:
+340)
+        at org.postgresql.jdbc2.AbstractJdbc2Statement.executeQuery(AbstractJdbc2Statement.java:239)
+        at org.apache.commons.dbcp.DelegatingStatement.executeQuery(DelegatingStatement.java:205)
+        at com.netblue.bruce.LogSwitchThread.newLogTable(LogSwitchThread.java:136)
+        at com.netblue.bruce.LogSwitchThread.run(LogSwitchThread.java:88)
+        at java.lang.Thread.run(Thread.java:595)
+Caused by: java.io.EOFException
+        at org.postgresql.core.PGStream.ReceiveChar(PGStream.java:258)
+        at org.postgresql.core.v3.QueryExecutorImpl.processResults(QueryExecutorImpl.java:1163)
+        at org.postgresql.core.v3.QueryExecutorImpl.execute(QueryExecutorImpl.java:188)
+        ... 7 more
+
+

@@ -1,0 +1,72 @@
+Issue Details   (XML | Word | Printable)
+
+Key:    BRUCE-20
+Type:   New Feature New Feature
+Status:     Resolved Resolved
+Resolution:     Fixed
+Priority:   Trivial Trivial
+Assignee:   Robert Klahn
+Reporter:   Derek Chan
+Votes:  0
+Watchers:   0
+Operations
+
+If you were logged in you would be able to see more operations.
+    
+Bruce
+functions to wrap master/slave tables query
+Created: 17/Oct/07 03:58 PM   Updated: 23/Oct/07 05:51 PM   
+Return to search
+Issue 10 of 29 issue(s)
+<< Previous | BRUCE-20 | Next >>
+Component/s:    Daemon
+Affects Version/s:  0.5, 1.0
+Fix Version/s:  1.5
+
+Time Tracking:  
+Not Specified
+
+File Attachments:   1. File master-slave-queries.sql (1 kb)
+
+
+Patch Submitted:    Yes
+
+
+ Description    « Hide
+taking queries provided by bob and wrapping them in a function....
+
+"it's not tedious, it's copy/paste"
+
+ Description    
+   taking queries provided by bob and wrapping them in a function.... "it's not tedious, it's copy/paste"
+    Show »
+
+ All     Comments    Work Log    Change History           Sort Order: [Ascending order - Click to sort in descending order]
+[ Permlink | « Hide ]
+Robert Klahn - 23/Oct/07 05:51 PM
+Feature added in http://svn.bruce.codehaus.org/changelog/bruce/?cs=101
+
+
+
+CREATE OR REPLACE FUNCTION bruce.getslaves () RETURNS SETOF VARCHAR AS $$
+select n.nspname||'.'||c.relname as tablename from pg_class c, pg_namespace n
+where c.relnamespace = n.oid
+   and c.oid in (select tgrelid from pg_trigger
+                  where tgfoid = (select oid from pg_proc
+                                   where proname = 'denyaccesstrigger'
+                                     and pronamespace = (select oid from pg_namespace
+                                                          where nspname = 'bruce')))
+order by 1;
+$$ LANGUAGE SQL;
+
+
+CREATE OR REPLACE FUNCTION bruce.getmasters () RETURNS SETOF VARCHAR AS $$
+select n.nspname||'.'||c.relname as tablename from pg_class c, pg_namespace n
+where c.relnamespace = n.oid
+   and c.oid in (select tgrelid from pg_trigger
+                  where tgfoid = (select oid from pg_proc
+                                   where proname = 'logtransactiontrigger'
+                                     and pronamespace = (select oid from pg_namespace
+                                                          where nspname = 'bruce')))
+order by 1;
+$$ LANGUAGE SQL;

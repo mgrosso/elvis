@@ -1,0 +1,44 @@
+Key:     BRUCE-26
+Type:   Improvement Improvement
+Status:     Open Open
+Priority:   Major Major
+Assignee:   Robert Klahn
+Reporter:   Robert Klahn
+Votes:  0
+Watchers:   0
+Operations
+
+If you were logged in you would be able to see more operations.
+    
+Bruce
+yf_node.includetable regex should match state of triggers on daemon startup.
+Created: 16/Dec/07 10:36 PM   Updated: 16/Dec/07 10:39 PM   
+Return to search
+Issue 4 of 29 issue(s)
+<< Previous | BRUCE-26 | Next >>
+Component/s:    Daemon
+Affects Version/s:  1.0
+Fix Version/s:  1.5+
+
+Time Tracking:  
+Not Specified
+
+
+ Description    « Hide
+Feature request received via IM.
+
+requestor:
+idea is to compare table list versus regex at daemon slae thread startup
+and before doing anything else
+make the triggers match the regex
+raklahn:
+I think thats a really good idea. The regex idea has gone over less than well with some on the Ops team, but I like the idea that one 'thing' be the database of record for what is replicated, and that it be external to the database in qustion.
+requestor:
+cool. pretty sure mysql replication does it the same way, except it uses that regex against the sql statements that it ships.
+so lots of users outside connexus should be familiar withthat.
+raklahn:
+Yea, this whole idea for a regex came from MySQL's use of it.
+requestor:
+true, remembering that now.
+
+

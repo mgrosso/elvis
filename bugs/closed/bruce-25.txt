@@ -1,0 +1,42 @@
+Key:     BRUCE-25
+Type:   Bug Bug
+Status:     Open Open
+Priority:   Blocker Blocker
+Assignee:   Robert Klahn
+Reporter:   Robert Klahn
+Votes:  0
+Watchers:   0
+Operations
+
+If you were logged in you would be able to see more operations.
+    
+Bruce
+Unable to process tables containing columns with reserved words in best unique index
+Created: 13/Dec/07 01:12 AM   Updated: 13/Dec/07 01:12 AM   
+Return to search
+Issue 5 of 29 issue(s)
+<< Previous | BRUCE-25 | Next >>
+Component/s:    Daemon
+Affects Version/s:  1.0
+Fix Version/s:  1.0
+
+Time Tracking:  
+Not Specified
+
+
+ Description    « Hide
+2007-12-12 21:18:39,224:TRACE db-sites-2 - db-sites-pg slave - db-sites-pg-mirror master com.netblue.bruce.SlaveRunner - Applying change. xid:3747141 tid:3382951330 tabname:heartbeat.web_set cmdtype:U info:time:timestamp:MjAwNy0xMi0xMiAxOTo0NDoxMy44MDQ0NDg=:MjAwNy0xMi0xMiAxOTo0NToxMy44MjExNjY=2007-12-12 21:18:39,351:ERROR db-sites-2 - db-sites-pg slave - db-sites-pg-mirror master com.netblue.bruce.SlaveRunner - Cannot commit last processed snapshot.org.postgresql.util.PSQLException: ERROR: syntax error at end of input at org.postgresql.core.v3.QueryExecutorImpl.receiveErrorResponse(QueryExecutorImpl.java:1525) at org.postgresql.core.v3.QueryExecutorImpl.processResults(QueryExecutorImpl.java:1309) at org.postgresql.core.v3.QueryExecutorImpl.execute(QueryExecutorImpl.java:188) at org.postgresql.jdbc2.AbstractJdbc2Statement.execute(AbstractJdbc2Statement.java:452) at org.postgresql.jdbc2.AbstractJdbc2Statement.executeWithFlags(AbstractJdbc2Statement.java:354) at org.postgresql.jdbc2.AbstractJdbc2Statement.execute(AbstractJdbc2Statement.java:347) at org.apache.commons.dbcp.DelegatingPreparedStatement.execute(DelegatingPreparedStatement.java:168) at com.netblue.bruce.SlaveRunner.applyAllChangesForTransaction(SlaveRunner.java:356) at com.netblue.bruce.SlaveRunner.processSnapshot(SlaveRunner.java:265) at com.netblue.bruce.SlaveRunner.run(SlaveRunner.java:224) at java.lang.Thread.run(Thread.java:595)
+
+sites=# select bruce.applylogtransaction('U','heartbeat.web_set','time:timestamp:MjAwNy0xMi0xMiAxOTo0NDoxMy44MDQ0NDg=:MjAwNy0xMi0xMiAxOTo0NToxMy44MjExNjY=');
+DEBUG:  info:time:timestamp:MjAwNy0xMi0xMiAxOTo0NDoxMy44MDQ0NDg=:MjAwNy0xMi0xMiAxOTo0NToxMy44MjExNjY=
+DEBUG:  p/uidx:CREATE UNIQUE INDEX web_set_pkey ON heartbeat.web_set USING btree ("time")
+DEBUG:  bos:"time"
+DEBUG:  uCols[0]:"time"
+DEBUG:  time $1:2007-12-12 19:45:13.821166
+DEBUG:  query:update heartbeat.web_set set time = $1 where 
+ERROR:  syntax error at end of input at character 46
+QUERY:  update heartbeat.web_set set time = $1 where 
+LINE 1: update heartbeat.web_set set time = $1 where 
+                                                     
+
+

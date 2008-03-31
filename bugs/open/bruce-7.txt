@@ -1,0 +1,15 @@
+Replicate Sequences
+Created: 01/Aug/07 02:16 PM   Updated: 05/Dec/07 12:59 PM   
+Return to search
+Issue 23 of 29 issue(s)
+<< Previous | BRUCE-7 | Next >>
+Component/s:    Daemon
+Affects Version/s:  None
+Fix Version/s:  1.5+
+
+Time Tracking:  
+Not Specified
+
+
+ Description    « Hide
+Request received for replication of sequences. Seems a reasonable feature, and many other replication systems have this capability.
