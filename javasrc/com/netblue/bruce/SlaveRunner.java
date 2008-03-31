@@ -77,6 +77,8 @@ public class SlaveRunner extends DaemonThread {
             properties.getProperty(SNAPSHOT_STATUS_UPDATE_KEY, SNAPSHOT_STATUS_UPDATE_DEFAULT);
         slaveTransactionIdQuery = properties.getProperty(
             SLAVE_UPDATE_TRANSACTION_ID_KEY, SLAVE_UPDATE_TRANSACTION_ID_DEFAULT);
+        slaveTransactionIdPostgresVersion_8_3_HigherQuery = properties.getProperty(
+                SLAVE_UPDATE_TRANSACTION_ID_8_3_HIGHER_KEY, SLAVE_UPDATE_TRANSACTION_ID_8_3_HIGHER_DEFAULT);
         applyTransactionsQuery = properties.getProperty(
             APPLY_TRANSACTION_KEY, APPLY_TRANSACTION_DEFAULT);
         daemonModeQuery = properties.getProperty(
@@ -93,6 +95,8 @@ public class SlaveRunner extends DaemonThread {
             PLUSN_SNAPSHOT_QUERY_KEY, PLUSN_SNAPSHOT_QUERY_DEFAULT);
         getOutstandingTransactionsQuery = properties.getProperty(
             GET_OUTSTANDING_TRANSACTIONS_KEY,GET_OUTSTANDING_TRANSACTIONS_DEFAULT);
+        postgresVersionQuery = properties.getProperty(
+            POSTGRES_VERSION_QUERY_KEY, POSTGRES_VERSION_QUERY_DEFAULT);
         LOGGER.info("Replicating node: " + nodeName + " at " + nodeUri );
         // creates a connection and all of our prepared statements
         initializeDatabaseResources();
@@ -181,16 +185,25 @@ public class SlaveRunner extends DaemonThread {
     /**
      * Prepares all of the {@link java.sql.PreparedStatement}s we need for this class.  Assumes a valid and open {@link
      * #slaveConnection} with auto commit off.
-     *
-     * @throws SQLException
+     * @throws Exception 
      */
-    private void prepareStatements() throws SQLException {
+    private void prepareStatements() throws Exception {
         slaveConnection.setSavepoint();
         selectLastSnapshotStatement =   capture(slaveConnection.prepareStatement(selectLastSnapshotQuery));
         updateLastSnapshotStatement =   capture(slaveConnection.prepareStatement(updateLastSnapshotQuery));
-        slaveTransactionIdStatement =   capture(slaveConnection.prepareStatement(slaveTransactionIdQuery));
         applyTransactionsStatement =    capture(slaveConnection.prepareStatement(applyTransactionsQuery));
         slaveTableIDStatement =         capture(slaveConnection.prepareStatement(slaveTableIDQuery));
+        postgresVersionStatement =      capture(slaveConnection.prepareStatement(postgresVersionQuery));
+        
+        if (isPostgresVersion_8_3_OrHigher()) {
+            slaveTransactionIdStatement = capture(slaveConnection.prepareStatement(slaveTransactionIdPostgresVersion_8_3_HigherQuery));
+            LOGGER.trace("Using the following slave transaction id query: " + slaveTransactionIdPostgresVersion_8_3_HigherQuery);
+        }
+        else {
+            slaveTransactionIdStatement = capture(slaveConnection.prepareStatement(slaveTransactionIdQuery));
+            LOGGER.trace("Using the following slave transaction id query: " + slaveTransactionIdQuery);
+        }
+        
         slaveConnection.commit();
     }
 
@@ -205,6 +218,46 @@ public class SlaveRunner extends DaemonThread {
         plusNSnapshotStatement = capture(masterConnection.prepareStatement(plusNSnapshotQuery));
         getOutstandingTransactionsStatement = capture(masterConnection.prepareStatement(getOutstandingTransactionsQuery));
         masterConnection.commit();
+    }
+
+    /**
+     * Queries for the postgres version and returns true if the version is 8.3 or higher.
+     *
+     * @return true if the postgres version is 8.3 or higher, otherwise, false
+     * @throws Exception 
+     */
+    public boolean isPostgresVersion_8_3_OrHigher() throws Exception {
+        String version = null;
+        LOGGER.trace("fetching Postgres Version from database");
+        
+        final ResultSet rs = capture(postgresVersionStatement.executeQuery());
+        if (rs.next()) {
+            version = rs.getString("setting");
+        }
+        release(rs);
+        slaveConnection.rollback();
+
+        if (version == null) {
+            throw new Exception("Could not get postgres version from slave");
+        }
+        
+        String versionNumString = null;
+        String versionStrings[] = version.split("\\.");
+        if (versionStrings != null && versionStrings.length > 1) {
+            versionNumString = new StringBuffer().append(versionStrings[0]).append("0").append(versionStrings[1]).toString();
+        }
+        
+        if (versionNumString == null) {
+            throw new Exception("Invalid postgres version string from slave: " + version);
+        }
+        
+        LOGGER.trace("Slave Postgres version,version_numeric: " + version + ", " + versionNumString);
+        
+        int num = Integer.parseInt(versionNumString);
+        if (num >= POSTGRES_VERSION_8_3_NUMERIC)
+            return true;
+        
+        return false;
     }
 
     /**
@@ -538,6 +591,7 @@ public class SlaveRunner extends DaemonThread {
     private PreparedStatement slaveTableIDStatement;
     private PreparedStatement plusNSnapshotStatement;
     private PreparedStatement getOutstandingTransactionsStatement;
+    private PreparedStatement postgresVersionStatement;
     private HashSet<String> slaveTables ;
 
     private int transactionLogFetchSize;
@@ -545,12 +599,14 @@ public class SlaveRunner extends DaemonThread {
     private String selectLastSnapshotQuery;
     private String updateLastSnapshotQuery;
     private String slaveTransactionIdQuery;
+    private String slaveTransactionIdPostgresVersion_8_3_HigherQuery;
     private String applyTransactionsQuery;
     private String daemonModeQuery;
     private String normalModeQuery;
     private String slaveTableIDQuery;
     private String getOutstandingTransactionsQuery;
     private String plusNSnapshotQuery;
+    private String postgresVersionQuery;
 
     // --------- Constants ------------------- //
     private String masterUri ;
@@ -596,6 +652,9 @@ public class SlaveRunner extends DaemonThread {
     private static final String SLAVE_UPDATE_TRANSACTION_ID_DEFAULT = new StringBuilder()
             .append("select * from pg_locks where pid = pg_backend_pid()")
             .append(" and locktype = 'transactionid'").toString();
+    private static final String SLAVE_UPDATE_TRANSACTION_ID_8_3_HIGHER_KEY = "bruce.slave.select.transactionid.8.3.higher";
+    private static final String SLAVE_UPDATE_TRANSACTION_ID_8_3_HIGHER_DEFAULT = new StringBuilder()
+            .append("select txid_current() as transaction").toString();
 
     // Query to determine tables that have Slave trigger
     private static final String SLAVE_TABLE_ID_KEY = "bruce.slave.hasSlaveTrigger";
@@ -640,6 +699,12 @@ public class SlaveRunner extends DaemonThread {
 	// Scans for a snapshot that is actualy greater than the current snapshot
 	"   and ((min_xaction > ?) or ((min_xaction = ?) and (max_xaction > ?))) "+
 	" order by current_xaction asc limit 1";
+
+    // Query to determine the postgres version
+    private static final String POSTGRES_VERSION_QUERY_KEY = "bruce.postgres.version.query";
+    private static final String POSTGRES_VERSION_QUERY_DEFAULT = new StringBuilder()
+            .append("select setting from pg_settings where name = 'server_version'").toString();
+    private static final int POSTGRES_VERSION_8_3_NUMERIC = 803;
 
     private static final String TRANSACTIONLOG_FETCH_SIZE_KEY = "bruce.transactionLogFetchSize";
     private static int TRANSACTIONLOG_FETCH_SIZE_DEFAULT = 5000;
