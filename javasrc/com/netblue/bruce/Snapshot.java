@@ -86,14 +86,29 @@ public class Snapshot implements Comparable, Serializable
 		    TransactionID maxTID, 
 		    SortedSet<TransactionID> inFlightTIDs)
     {
-	this.currentXid = currentTID;
+        // in postgres 8.3 and higher, the current xid can be greater than max (unknown reason), in which case,
+        // make the current xid = max xid
+        if (currentTID.compareTo(maxTID) == 1)
+        {
+            logger.warn("The snapshot current Xid is greater than max Xid, so making the current Xid = max Xid (happens in postgres 8.3 and higher):" +
+                    " currentXid=" + currentTID + " minXid=" + minTID + " maxXid=" + maxTID );
+            this.currentXid = maxTID;
+        }
+        else
+        {
+            this.currentXid = currentTID;
+        }
         this.minXid = minTID;
         this.maxXid = maxTID;
         this.inProgressXids = inFlightTIDs;
 	this.inProgressXids.add(this.currentXid);
-        if (this.maxXid.compareTo(this.minXid) != 1)
+    
+        // in postgres 8.3 and higher, the min and max xid can be same
+        if (this.maxXid.compareTo(this.minXid) == -1)
         {
-            throw new IllegalArgumentException("Max TransactionID must be greater than Min TransactionID");
+            logger.error("currentXid=" + this.currentXid + " minXid=" + this.minXid +
+                         " maxXid=" + this.maxXid );
+            throw new IllegalArgumentException("Max TransactionID must be greater than equal to Min TransactionID");
         }
     }
 
