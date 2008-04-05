@@ -1,0 +1,20 @@
+bruce.jar should be versioned, with a symbolic link to the versioned file
+Created: 03/Aug/07 04:03 PM   Updated: 05/Dec/07 01:00 PM   
+Return to search
+Issue 21 of 29 issue(s)
+<< Previous | BRUCE-9 | Next >>
+Component/s:    None
+Affects Version/s:  0.5
+Fix Version/s:  1.5+
+
+Time Tracking:  
+Not Specified
+
+
+ All     Comments    Work Log    Change History           Sort Order: [Ascending order - Click to sort in descending order]
+[ Permlink | « Hide ]
+Robert Klahn - 31/Aug/07 04:46 PM
+The postgresql shared library (bruce.so) should be versioned too.
+[ Show » ]
+Robert Klahn - 31/Aug/07 04:46 PM The postgresql shared library (bruce.so) should be versioned too.
+

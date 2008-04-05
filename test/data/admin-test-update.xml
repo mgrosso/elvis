@@ -1,0 +1,13 @@
+<!DOCTYPE dataset SYSTEM "dataset.dtd">
+<dataset>
+    <table name="bruce.yf_node">
+        <column>id</column>
+        <column>name</column>
+        <column>includetable</column>
+        <row>
+            <value>2</value>
+            <value>Cluster 0 - Slave Ein</value>
+            <value>replication_test\.replicate_.+</value>
+        </row>
+    </table>
+</dataset>

@@ -1,0 +1,35 @@
+Admin tool should allow users to initialize replication nodes that are already in config DB
+Created: 05/Jul/07 11:08 AM   Updated: 19/Oct/07 01:36 PM  Due: 13/Jul/07   
+Return to search
+Issue 28 of 29 issue(s)
+<< Previous | BRUCE-2 | Next >>
+Component/s:    Admin Tool
+Affects Version/s:  0.5
+Fix Version/s:  1.5
+
+Time Tracking:  
+Original Estimate:  8 hours     
+Original Estimate - 8 hours
+Remaining Estimate:     8 hours     
+Remaining Estimate - 8 hours
+Time Spent:     Not Specified   
+Remaining Estimate - 8 hours
+
+
+ Description    « Hide
+When using the admin tool, if an error occurs for some reason - let's say the database for a node you are loading doesn't exist - the node has already been added to the configuration database, but has not been initialized with the replication schema. There should be an easy way to initialize specific nodes without modifying the configuration database.
+ Description    
+   When using the admin tool, if an error occurs for some reason - let's say the database for a node you are loading doesn't exist - the node has already been added to the configuration database, but has not been initialized with the replication schema. There should be an easy way to initialize specific nodes without modifying the configuration database.
+    Show »
+
+ All     Comments    Work Log    Change History           Sort Order: [Ascending order - Click to sort in descending order]
+[ Permlink | « Hide ]
+Lance Ball - 05/Jul/07 11:13 AM
+There is a workaround for this. Submit the XML file for the nodes you need to have initialized, and use "-operation UPDATE" command line option. This will cause the node metadata to be updated in the configuration database, and then initialize the node.
+[ Show » ]
+Lance Ball - 05/Jul/07 11:13 AM There is a workaround for this. Submit the XML file for the nodes you need to have initialized, and use "-operation UPDATE" command line option. This will cause the node metadata to be updated in the configuration database, and then initialize the node.
+
+[ Permlink | « Hide ]
+Lance Ball - 09/Jul/07 12:47 PM
+Moving this to the next release. There is a reasonable work around for the problem that has no identifiable problems.
+

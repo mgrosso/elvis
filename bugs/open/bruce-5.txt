@@ -1,0 +1,20 @@
+Admin tool does not always handle CLEAN_INSERT correctly if there are rows in the config database.
+Created: 19/Jul/07 04:56 PM   Updated: 19/Oct/07 01:42 PM  Due: 26/Jul/07   
+Return to search
+Issue 25 of 29 issue(s)
+<< Previous | BRUCE-5 | Next >>
+Component/s:    Admin Tool
+Affects Version/s:  0.5, 1.0
+Fix Version/s:  1.5
+
+Time Tracking:  
+Not Specified
+
+
+ Description    « Hide
+When using the admin tool to do a CLEAN_INSERT on the configuration database, if there are rows in the db with foreign key constraints (think a master node ID in the yf_cluster table, a constraint exception is thrown, e.g.
+
+org.postgresql.util.PSQLException: ERROR: update or delete on "yf_node" violates foreign key constraint "master_node_id_fk" on "yf_cluster"
+Detail: Key (id)=(1) is still referenced from table "yf_cluster".
+
+See ModifyClusterAcceptanceTest#testMasterSlaveSwapPickedUpByDaemon

@@ -1,0 +1,210 @@
+Goal:
+ * Try for message complexity f(n) (vs slony's f(n^2))
+ * Retain slony ideas around transaction capture (quite elegant)
+ * Minimize Pg functions (that have to be in 'C')
+ * Daemon code in Java
+ * Ability to create a new node from a backup of a master, a slave, or empty schema.
+ * Support Pg large objects (Slony does not, VnB uses them)
+
+Daemon design:
+
+* Each transaction is a change object
+* A thread to read the master database and create transaction objects ("reader")
+* A thread per slave to apply the changes ("writer")
+* A thread to do master maintenance. Rotate transaction logs, generate sync events, etc.
+
+"reader":
+
+* Within a transaction:
+  * Selects changes from transaction log, creates transaction objects, inserts into sorted map
+    (key=transaction id)
+    * Transaction object either needs to maintain count of applied slaves for ultimate destruction, 
+      or maybe accessed via WeakReferences.
+    * The idea here is that a "writer" thread does not need to go to the database to know
+      what needs to be applied to the slave. This is really important for scalability.
+    * Maybe WeakReferences because FUTURE writer threads (aka new slaves) may want access
+    * Maybe via a count, because new slaves are an edge-case.
+  * Selects SYNCs from sync log, creates SYNC events, inserts into a sorted map (with the same count/
+    WeakReferences issues above)
+* Calls notifyAll() on the SYNC map.
+
+"writer":
+* wait() on the SYNC map
+* Determine transactions to apply, using SYNC events. Details below.
+* Determine order of changes from change rowid.  
+* Apply set of changes to slave, within a transaction.
+
+"maintainer":
+* Regularly (property driven, default one day?) create new transaction log table, mark it as current in the current log table, update view.
+* Regularly (property driven, default five days?) drop old transaction logs, update view.
+* Every N milliseconds (property driven), generate SYNC event.
+
+Postgresql extensions:
+
+* Function to capture transaction, called as trigger.
+* Function to capture large objects, called from rule against pg_largeobject (postgres does not permit triggers against system tables)
+* Function to prevent updates on slave, called as trigger. Rule for pg_largeobject?
+* Function to generate SYNC events (ala Slony's SYNC event) called from "maintainer" java thread.
+
+What is a SYNC event:
+
+Start a transaction (BEGIN WORK). 
+Examine the postgresql SerializableSnapshot structure.
+typedef struct SnapshotData
+{
+        TransactionId xmin;                     /* XID < xmin are visible to me */
+        TransactionId xmax;                     /* XID >= xmax are invisible to me */
+        uint32          xcnt;                   /* # of xact ids in xip[] */
+        TransactionId *xip;                     /* array of xact IDs in progress */
+        /* note: all ids in xip[] satisfy xmin <= xip[i] < xmax */
+        CommandId       curcid;                 /* in my xact, CID < curcid are visible */
+} SnapshotData;
+extern DLLIMPORT Snapshot SerializableSnapshot;
+Capture xmin, xmax, and the list of xips, store in a table.
+Commit the transaction. 
+
+How to determine what transactions to apply, using SYNC events:
+
+xaction_list.init();
+for (xaction=previous_SYNC.min_xaction;xaction<SYNC.max_transaction;xaction++) {
+	if (SYNC.lt_snapshot(xaction) &&
+            previous_SYNC.ge_snapshot(xaction)) {
+		xaction_list.add(xaction);
+        }
+}
+# Resulting list are transactions that should be applied.
+
+# Presuming a sync object derived from a sync event.
+sync.lt_snapshot(xaction) {
+	# Not as simple as a numeric lt, because of some special needs around postgresql transaction IDs
+	if transactionidprecedes(xaction,xmin) return true;
+
+	if not transactionidpreceeds(xaction,xmax) return false; # mainly gt(xmax), but "special needs" apply
+
+        # If the transaction was inflight, than its NOT less than the snapshot
+	foreach test_xaction in inflight_transactions {
+        	if transactionidequals(xaction,test_xaction) return false;
+        }
+
+        return true;
+}
+
+sync.ge_snapshot(xaction) {
+        if transactionidfollowsorequals(xaction,xmax) return true;
+
+	if transactionidprecedes(xaction,xmin) return true;
+
+        # If the transaction is inflight, then its GREATER THAN the current sync's snapshot
+	foreach test_xaction in inflight_transactions {
+		if transactionidequals(value,test_xaction) return true;
+        }
+
+	return false;
+}
+
+# This is postgresql logic found in 
+# src/backend/access/transam/transam.c and src/include/access/transam.h
+# needs to be converted to Java.
+
+/* ----------------
+ *              Special transaction ID values
+ *
+ * BootstrapTransactionId is the XID for "bootstrap" operations, and
+ * FrozenTransactionId is used for very old tuples.  Both should
+ * always be considered valid.
+ *
+ * FirstNormalTransactionId is the first "normal" transaction id.
+ * ----------------
+ */
+#define InvalidTransactionId            ((TransactionId) 0)
+#define BootstrapTransactionId          ((TransactionId) 1)
+#define FrozenTransactionId                     ((TransactionId) 2)
+#define FirstNormalTransactionId        ((TransactionId) 3)
+#define MaxTransactionId                        ((TransactionId) 0xFFFFFFFF)
+#define TransactionIdEquals(id1, id2)   ((id1) == (id2))
+
+/*
+ * TransactionIdPrecedes --- is id1 logically < id2?
+ */
+bool
+TransactionIdPrecedes(TransactionId id1, TransactionId id2)
+{
+        /*
+         * If either ID is a permanent XID then we can just do unsigned
+         * comparison.  If both are normal, do a modulo-2^31 comparison.
+         */
+        int32           diff;
+
+        if (!TransactionIdIsNormal(id1) || !TransactionIdIsNormal(id2))
+                return (id1 < id2);
+
+        diff = (int32) (id1 - id2);
+        return (diff < 0);
+}
+
+/*
+ * TransactionIdFollowsOrEquals --- is id1 logically >= id2?
+ */
+bool
+TransactionIdFollowsOrEquals(TransactionId id1, TransactionId id2)
+{
+        int32           diff;
+
+        if (!TransactionIdIsNormal(id1) || !TransactionIdIsNormal(id2))
+                return (id1 >= id2);
+
+        diff = (int32) (id1 - id2);
+        return (diff >= 0);
+}
+
+Transaction capture schema:
+
+transaction log:
+sequence number
+transaction number (integer)
+command type (update, insert, delete, maybe special purpose other types (like maybe 'sync'))
+tablename (name of table transaction performed against)
+info (before and after image of row that changed. Probably BASE64 encoded so transportable across architectures)
+
+example:
+CREATE SEQUENCE tlog_row_seq
+    INCREMENT BY 1
+    NO MAXVALUE
+    NO MINVALUE
+    CACHE 1;
+
+CREATE TABLE tlog_30 (
+    rowid bigint DEFAULT nextval('aug_log_row_seq'::regclass),
+    xaction integer,
+    cmdtype character(1),
+    tabname text,
+    info text
+);
+CREATE INDEX tlog_30_xaction_idx ON tlog_30 USING btree (xaction);
+
+View of all capture logs: Useful when looking for a transaction without needing to know what capture log table the transaction is in.
+
+example:
+create or replace view tlog as select * from tlog_29 union select * from tlog_30;
+
+Current log tracking table:
+
+id
+create_time
+
+CREATE SEQUENCE currentlog_id_seq
+    INCREMENT BY 1
+    NO MAXVALUE
+    NO MINVALUE
+    CACHE 1;
+
+CREATE TABLE currentlog (
+    id integer DEFAULT nextval('currentlog_id_seq'::regclass) NOT NULL,
+    create_time timestamp without time zone DEFAULT now() NOT NULL
+);
+
+ALTER TABLE ONLY currentlog
+    ADD CONSTRAINT currentlog_pkey PRIMARY KEY (id);
+
+
+

@@ -1,0 +1,66 @@
+Constructed DELETE statement, when run on the master table of inherited tables may delete more than it should
+Created: 25/Sep/07 02:20 PM   Updated: 25/Sep/07 02:22 PM   
+Return to search
+Issue 15 of 29 issue(s)
+<< Previous | BRUCE-15 | Next >>
+Component/s:    Daemon
+Affects Version/s:  1.0
+Fix Version/s:  None
+
+Time Tracking:  
+Not Specified
+
+Testcase included:  yes
+
+
+ Description    « Hide
+Replication stops with this error:
+
+org.postgresql.util.PSQLException: ERROR: 2 rows updated, deleted, or inserted. Expected one and only one row.
+
+Steps to reproduce:
+
+CREATE TABLE test (x INT, y INT);
+
+on master:
+
+CREATE TRIGGER test_sn AFTER INSERT OR DELETE OR UPDATE ON test FOR EACH STATEMENT EXECUTE PROCEDURE bruce.logsnapshottrigger();
+CREATE TRIGGER test_tx AFTER INSERT OR DELETE OR UPDATE ON test FOR EACH ROW EXECUTE PROCEDURE bruce.logtransactiontrigger();
+
+on slave:
+
+CREATE TRIGGER test_deny BEFORE INSERT OR DELETE OR UPDATE ON test FOR EACH ROW EXECUTE PROCEDURE bruce.denyaccesstrigger();
+
+on master:
+
+INSERT INTO test VALUES (1, 1);
+INSERT INTO test VALUES (1, 1);
+DELETE FROM test WHERE x=1 AND y=1;
+
+=# select * from bruce.slavesnapshotstatus ;
+clusterid | slave_xaction | master_current_xaction | master_min_xaction | master_max_xaction | master_outstanding_xactions | update_time
+---------------------------------------------------------------------------------------------------------------------------------------
+1 | 9950079 | 358712580 | 358712580 | 358712581 | 358712580 | 2007-09-25 11:30:30.813368
+(1 row)
+
+=> select * from bruce.transactionlog where xaction=358712580;
+rowid | xaction | cmdtype | tabname | info
+-------------------------------------------------------------
+48869 | 358712580 | D | public.test | x:int4:MQ==:Unable to render embedded object: File () not found.
+48870 | 358712580 | D | public.test | x:int4:MQ==:Unable to render embedded object: File () not found.
+(2 rows)
+
+Index: csrc/bruce.c
+===================================================================
+--- csrc/bruce.c    (revision 90)
++++ csrc/bruce.c    (working copy)
+@@ -276,7 +276,7 @@
+       char tempS[10240];
+       int numUniqueInWhere=0;
+       bindParms = 0;
+-      sprintf(query,"delete from %s where ",tTableS);
++      sprintf(query,"delete from only %s where ",tTableS);
+       for (i=0;i<numCols;i++) {
+    if (colInUnique(uCols,uColsCount,colSs[i].colName)) {
+      if (colSs[i].oldIsNull) {
+
