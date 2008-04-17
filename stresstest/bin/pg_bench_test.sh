@@ -12,6 +12,20 @@
 ## ----------------------------------------------------------------------
 ## ----------------------------------------------------------------------
 
+## ----------------------------------------------------------------------
+## 1- define defaults and set options as needed.
+## 2- define functions
+## 3- run the argument
+## ----------------------------------------------------------------------
+
+## ----------------------------------------------------------------------
+## 1- define defaults and set options as needed.
+## ----------------------------------------------------------------------
+ARG=$1
+if [ -z $ARG ] ; then
+    ARG=fulltest
+fi
+
 if [ -z $BASE ] ; then
     export BASE=elvis-pgbench-test
 fi
@@ -76,6 +90,10 @@ export DIGIT PG_DATA PORT DB UHP DBURL
 export TOPOLOGY CLUSTER_TOPOLOGY NODE_NUMBERS MASTER_NODE SLAVE_NODES CLUSTER_NAME
 export ALL_CLUSTERS ALL_NODE_NUMBERS ROOT_NODE
 
+## ----------------------------------------------------------------------
+## 2- define functions
+## ----------------------------------------------------------------------
+
 function puke(){
     echo $@
     exit 1
@@ -130,7 +148,7 @@ function set_uhp(){
     RUNPSQL="psql -e $UHP -d $DB -c "
     RUNPSQLF="psql -e $UHP -d $DB -f "
     DBURL="jdbc:postgresql://localhost:$PORT/$DB?user=$TESTUSER"
-    BRUCE_OPTS="-Dpid.file=bruce.pid -Dpostgresql.db_name=${DB} -Dpostgresql.URL=${DBURL} -Dhibernate.connection.url=${DBURL} -Dhibernate.connection.username=${TESTUSER} -Dhibernate.dialect=org.hibernate.dialect.PostgreSQLDialect"
+    BRUCE_OPTS="${EXTRA_BRUCE_OPTS} -Dpid.file=bruce.pid -Dpostgresql.db_name=${DB} -Dpostgresql.URL=${DBURL} -Dhibernate.connection.url=${DBURL} -Dhibernate.connection.username=${TESTUSER} -Dhibernate.dialect=org.hibernate.dialect.PostgreSQLDialect"
 
 }
 
@@ -353,24 +371,97 @@ function check_heartbeat(){
     delete_heartbeat 1
 }
 
-
-stop_any_running_db 
-maketop
-foreach_node makedb
-foreach_cluster setup_cluster
-add_triggers
-foreach_cluster distribute_snapshot
-foreach_cluster start_replication
-check_heartbeat
-
-#benchmark starts here....
-insert_heartbeat 1
-wait_for_all 1
-run_pgbench
-insert_heartbeat 2
-wait_for_all 2
+function validate (){
+    for N in 0 1 2 3 4 5 ; do psql -h localhost -p 5432${N} -U bruce -d bruce  -c "select sum(tbalance) from tellers; select sum(bbalance) from branches; select sum(abalance) from accounts;" ; done
+}
 
 
-##for N in 0 1 2 3 4 5 ; do psql -h localhost -p 5432${N} -U bruce -d bruce  -c "select sum(tbalance) from tellers; select sum(bbalance) from branches; select sum(abalance) from accounts;" ; done
+function _stop (){
+    stop_any_running_db 
+}
 
-#add_master_triggers 1
+function _init (){
+    maketop
+    foreach_node makedb
+    foreach_cluster setup_cluster
+    add_triggers
+}
+
+function _start(){
+    foreach_cluster distribute_snapshot
+    foreach_cluster start_replication
+    check_heartbeat
+}
+
+function _sync(){
+    insert_heartbeat $1
+    wait_for_all $1
+}
+
+function _benchmark (){
+    _sync 1
+    run_pgbench
+    _sync 2
+}
+
+function _fulltest (){
+    _stop
+    _init
+    _start
+    _benchmark
+    _stop
+}
+
+function _help (){
+
+cat <<HELP
+$0 : the usage is explained pretty well by the code snippet below.
+
+case $ARG in 
+     stop) _stop ;;     #stop all postgres and replication daemons
+     init) _init ;;     #initialize databases and setup replication
+     start) _start ;;   #start databases and replication daemons
+     benchmark) _benchmark ;;   #run the pg_bench benchmark.
+     fulltest) _fulltest ;;     #same as doing stop,init,start,benchmark,stop
+     sync) _sync $2 ;;  #inserts a row with id of arg and waits for it to replicate
+     help)              
+     *) _help ;;        #print out usage information
+esac
+
+its also worth noting that you can configure the pg bench run using the
+following variables listed below with their defaults (see postgresql
+contrib/pg_bench for more information ... ):
+
+    PGBENCH_CLIENTS=3
+    PGBENCH_SCALEFACTOR=6
+    PGBENCH_TRANSACTIONS=1000
+
+for a really good time, try changing the default TOPOLOGY variable. the grammer of 
+this variable is as follows...  
+
+    <topology>  ::=   <cluster> { ":" <cluster> }
+    <cluster> ::= <master> { "," <slave> }
+    <master> ::= <node>
+    <slave> ::= <node>
+    <node> ::= digit
+
+The default value is TOPOLOGY=0,1,3,4:1,2:2,5  which corresponds to a topology with
+a root master node 0 with 3 slave nodes 1,3, and 4, where node 1 has node 2 as
+a slave, and node 2 has node 5 as a slave in turn.
+
+HELP
+}
+
+## ----------------------------------------------------------------------
+## 3- run the argument
+## ----------------------------------------------------------------------
+
+case $ARG in 
+     stop) _stop ;;     #stop all postgres and replication daemons
+     init) _init ;;     #initialize databases and setup replication
+     start) _start ;;   #start databases and replication daemons
+     benchmark) _benchmark ;;   #run the pg_bench benchmark.
+     fulltest) _fulltest ;;     #same as doing stop,init,start,benchmark,stop
+     sync) _sync $2 ;;  #inserts a row with id of arg and waits for it to replicate
+     *) _help ;;        #print out usage information
+esac
