@@ -193,6 +193,7 @@ public class SlaveRunner extends DaemonThread {
         updateLastSnapshotStatement =   capture(slaveConnection.prepareStatement(updateLastSnapshotQuery));
         applyTransactionsStatement =    capture(slaveConnection.prepareStatement(applyTransactionsQuery));
         slaveTableIDStatement =         capture(slaveConnection.prepareStatement(slaveTableIDQuery));
+        daemonModeStatement =           capture(slaveConnection.prepareStatement(daemonModeQuery));
         postgresVersionStatement =      capture(slaveConnection.prepareStatement(postgresVersionQuery));
         
         if (isPostgresVersion_8_3_OrHigher()) {
@@ -281,6 +282,7 @@ public class SlaveRunner extends DaemonThread {
     protected void processSnapshot(final Snapshot snapshot) throws Exception {
         logMem( "Last processed snapshot: " + lastProcessedSnapshot + " new snapshot: "+snapshot );
         slaveConnection.setSavepoint();
+        setDaemonMode();
         applyAllChangesForTransaction2(snapshot);
         updateSnapshotStatus(snapshot);
         slaveConnection.commit();
@@ -461,6 +463,11 @@ public class SlaveRunner extends DaemonThread {
         }
     }
 
+    private void setDaemonMode()throws Exception{
+        daemonModeStatement.execute();
+    }
+
+
     /**
      * Gets the next snapshot from the master database. Will return null if no next snapshot
      * available.
@@ -563,13 +570,16 @@ public class SlaveRunner extends DaemonThread {
         LOGGER.trace("fetching Slave Tables from database:");
         slaveTables = new HashSet<String>();
         ResultSet rs = capture(slaveTableIDStatement.executeQuery());
+        StringBuffer sb = new StringBuffer("slave tables: ");
         while (rs.next()) {
             String table = rs.getString("tablename");
             slaveTables.add(table);
-            LOGGER.trace(table);
+            sb.append(table);
+            sb.append(",");
         }
         release(rs);
         slaveConnection.commit();
+        LOGGER.debug(sb.toString());
     }
     
     // --------- Class fields ---------------- //
@@ -591,6 +601,7 @@ public class SlaveRunner extends DaemonThread {
     private PreparedStatement slaveTableIDStatement;
     private PreparedStatement plusNSnapshotStatement;
     private PreparedStatement getOutstandingTransactionsStatement;
+    private PreparedStatement daemonModeStatement;
     private PreparedStatement postgresVersionStatement;
     private HashSet<String> slaveTables ;
 
