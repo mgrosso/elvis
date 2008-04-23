@@ -34,7 +34,6 @@ if [ -z $LOGS ] ; then
     export LOGS=$BASE/logs/
 fi
 
-
 if [ -z $TESTUSER ] ; then
     TESTUSER=bruce
 fi
@@ -48,7 +47,7 @@ if [ -z $TOPOLOGY ] ; then
 fi
 ALL_CLUSTERS=$( echo $TOPOLOGY|tr ':' ' ' )
 ALL_NODE_NUMBERS=$(  echo $TOPOLOGY|tr ':,' '  ' | xargs -n 1 echo | sort -u )
-ROOT_NODE=$( echo $TOPOLOGY|tr ':,' '  ' | xargs -n 1 echo | head -1 )
+ROOT_NODE=$( echo $TOPOLOGY|tr ':,' '  ' | xargs -n 1 echo 2>/dev/null | head -1 )
 
 if [ ! -z $BRUCE_CLASSPATH ] ; then
     CLASSPATH=$BRUCE_CLASSPATH
@@ -86,6 +85,25 @@ if [ -z $PGBENCH_TRANSACTIONS ] ; then
     PGBENCH_TRANSACTIONS=1000
 fi
 
+LOG_DESTINATION="log_destination = stderr
+logging_collector = on
+"
+if [ -z $PGVER ] ; then
+    psql --version | grep -q "8\.3\."
+    if [ $? -eq 0 ] ; then
+        PGVER=83
+    else 
+        psql --version | grep -q "8\.1\."
+        if [ $? -ne 0 ] ;then 
+            PGVER=81
+            LOG_DESTINATION="redirect_stderr = on"
+        else
+            echo "warning. psql is missing or a bad version. this probably wont work."
+            exit 1
+        fi
+    fi
+fi
+
 export DIGIT PG_DATA PORT DB UHP DBURL
 export TOPOLOGY CLUSTER_TOPOLOGY NODE_NUMBERS MASTER_NODE SLAVE_NODES CLUSTER_NAME
 export ALL_CLUSTERS ALL_NODE_NUMBERS ROOT_NODE
@@ -100,6 +118,7 @@ function puke(){
 }
 
 function do_or_puke (){
+    echo do_or_puke $@
     $@
     if [ $? -ne 0 ] ; then
         puke "command failed: $@"
@@ -204,7 +223,9 @@ function edit_postgresql_conf(){
     cat >>$PG_DATA/postgresql.conf <<EOF
     log_filename = 'postgresql.log'
     port = $PORT
-    redirect_stderr = on
+# $PGVER
+    $LOG_DESTINATION
+    log_directory = 'pg_log'
     fsync = off
     log_duration = on
     log_line_prefix = '%u d=%d %r p%p t=%m ses=%c[%l] tx=%x '           # Special values:
@@ -232,7 +253,10 @@ function makedb (){
     do_or_puke mkdir -p $PG_DATA
     do_or_puke initdb -E utf8 -U $TESTUSER -D $PG_DATA
     edit_postgresql_conf
-    nohup pg_ctl -D $PG_DATA start >$LOGS/pg.${DIGIT}.out 2>&1 &
+    pg_ctl -D $PG_DATA start >$LOGS/pg.${DIGIT}.out 2>&1
+    if [ $? -ne 0 ] ; then
+        puke "could not start db with this command: pg_ctl -D $PG_DATA start >$LOGS/pg.${DIGIT}.out 2>&1 "
+    fi
     waitfordb
     do_or_puke createdb -E utf8 $UHP -O $TESTUSER $DB
     make_schema
@@ -312,6 +336,18 @@ function insert_heartbeat (){
     ID=$1
     set_uhp $ROOT_NODE
     $RUNPSQL "insert into pgbench_test_heartbeat (id,t) values ($ID,now());" || puke "psql failed "
+}
+
+function insert_next_heartbeat (){
+    ID=$1
+    set_uhp $ROOT_NODE
+    $RUNPSQL "insert into pgbench_test_heartbeat (id,t) select max(id)+1,now() from pgbench_test_heartbeat ;" || puke "psql failed "
+}
+
+function vacuum_heartbeat (){
+    ID=$1
+    set_uhp $ROOT_NODE
+    $RUNPSQL "vacuum full pgbench_test_heartbeat;" || puke "psql failed "
 }
 
 function update_heartbeat (){
@@ -404,6 +440,10 @@ function _benchmark (){
     _sync 2
 }
 
+function _vacuum_heartbeat (){
+    foreach_node vacuum_heartbeat
+}
+
 function _fulltest (){
     _stop
     _init
@@ -424,6 +464,8 @@ case $ARG in
      benchmark) _benchmark ;;   #run the pg_bench benchmark.
      fulltest) _fulltest ;;     #same as doing stop,init,start,benchmark,stop
      sync) _sync $2 ;;  #inserts a row with id of arg and waits for it to replicate
+     async) _async $2 ;;  #inserts a row with a new id into the root node heartbeat table and returns immediately
+     vacuum_heartbeat) _vacuum_heartbeat ;;  #vacuums the heartbeat tables
      help)              
      *) _help ;;        #print out usage information
 esac
@@ -463,5 +505,7 @@ case $ARG in
      benchmark) _benchmark ;;   #run the pg_bench benchmark.
      fulltest) _fulltest ;;     #same as doing stop,init,start,benchmark,stop
      sync) _sync $2 ;;  #inserts a row with id of arg and waits for it to replicate
+     async) _async $2 ;;  #inserts a row with a new id into the root node heartbeat table and returns immediately
+     vacuum_heartbeat) _vacuum_heartbeat ;;  #vacuums heartbeat tables
      *) _help ;;        #print out usage information
 esac
