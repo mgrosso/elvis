@@ -124,40 +124,30 @@ CREATE TABLE bruce.slavesnapshotstatus (
 -- listing functions for finding slave, master tables, etc...
 ------------------------------------------------------------------------
 
-CREATE OR REPLACE FUNCTION bruce.find_tables_with_trigger (
-    schem_ text
-    ,func_ text
+CREATE OR REPLACE FUNCTION bruce.find_trigger_tables (
+    func_ text
     ,out schema_ pg_namespace.nspname%TYPE
     ,out table_  pg_class.relname%TYPE
 ) RETURNS SETOF RECORD AS $Q$ 
-declare 
-    r record;
-begin
-for r in 
-    select n.nspname as nam, c.relname as rel
-    from pg_class c, pg_namespace n
-    where c.relnamespace = n.oid and c.oid in (
-        select tgrelid 
-        from pg_trigger
-        where tgfoid = (
-            select oid 
-            from pg_proc
-            where 
-                proname like quote_ident(func_)
-                and pronamespace = (
-                    select oid 
-                    from pg_namespace
-                    where nspname like quote_ident(schem_)
-                )
-        )
+select n.nspname as schema_, c.relname as table_
+from pg_class c, pg_namespace n
+where c.relnamespace = n.oid and c.oid in (
+    select tgrelid 
+    from pg_trigger
+    where tgfoid = (
+        select oid 
+        from pg_proc
+        where 
+            proname like quote_ident($1)
+            and pronamespace = (
+                select oid 
+                from pg_namespace
+                where nspname like 'bruce'
+            )
     )
-    order by 1 LOOP
-        schema_ := r.nam ;
-        table_  := r.rel ;
-        return next;
-end loop;
-end;
-$Q$ language plpgsql ;
+)
+order by 1,2 ;
+$Q$ language sql ;
 
 
 
@@ -165,21 +155,15 @@ CREATE OR REPLACE FUNCTION bruce.find_tables_in_schema (
     schem_ text
     ,out table_  pg_class.relname%TYPE
 ) RETURNS SETOF pg_class.relname%TYPE AS $Q$ 
-declare 
-    r record;
-begin
-for r in 
-    select c.relname as rel
-    from pg_class c, pg_namespace n
-    where c.relnamespace = n.oid 
-        and n.nspname = quote_ident(schem_)
-        and c.relkind = 'r'
-    order by 1 LOOP
-        table_  := r.rel ;
-        return next;
-end loop;
-end;
-$Q$ language plpgsql ;
+
+select c.relname as table_
+from pg_class c, pg_namespace n
+where c.relnamespace = n.oid 
+    and n.nspname = quote_ident($1)
+    and c.relkind = 'r'
+order by 1;
+
+$Q$ language sql ;
 
 
 
@@ -187,10 +171,8 @@ CREATE OR REPLACE FUNCTION bruce.get_master_tables (
     out schema_ pg_namespace.nspname%TYPE
     ,out table_  pg_class.relname%TYPE
 ) RETURNS SETOF RECORD AS $$ 
-begin
-    return query select * from bruce.find_tables_with_trigger('bruce' , 'logtransactiontrigger');
-end;
-$$ language plpgsql ;
+select * from bruce.find_trigger_tables('logtransactiontrigger');
+$$ language sql ;
 
 
 
@@ -198,10 +180,8 @@ CREATE OR REPLACE FUNCTION bruce.get_slave_tables (
     out schema_ pg_namespace.nspname%TYPE
     ,out table_  pg_class.relname%TYPE
 ) RETURNS SETOF RECORD AS $$ 
-begin
-    return query select * from bruce.find_tables_with_trigger('bruce' , 'denyaccesstrigger');
-end;
-$$ language plpgsql ;
+select * from bruce.find_trigger_tables('denyaccesstrigger');
+$$ language sql ;
 
 
 
@@ -214,11 +194,13 @@ CREATE OR REPLACE FUNCTION bruce.add_trigger (
     ,table_  pg_class.relname%TYPE
     ,func_  pg_proc.proname%TYPE
     ,suffix_  pg_proc.proname%TYPE
+    ,before_after_  pg_proc.proname%TYPE
 ) RETURNS VOID AS $$ 
 begin
     execute 'create trigger ' 
-                || quote_ident(table_) || quote_ident(suffix_) 
-                || ' before insert or delete or update on ' 
+                || quote_ident(table_ || suffix_) 
+                || ' ' || before_after_ 
+                ||' insert or delete or update on ' 
                 || quote_ident(schema_) || '.' || quote_ident(table_) 
                 || ' for each row execute procedure bruce.' 
                 || quote_ident(func_) || '()';
@@ -234,7 +216,7 @@ CREATE OR REPLACE FUNCTION bruce.drop_trigger (
     ,suffix_  pg_proc.proname%TYPE
 ) RETURNS VOID AS $$ 
 begin
-    execute 'drop trigger ' || quote_ident(table_) || quote_ident(suffix_) || ' on '
+    execute 'drop trigger ' || quote_ident(table_||suffix_) || ' on '
                 || quote_ident(schema_) || '.' || quote_ident(table_) 
                 ;
 end;
@@ -243,25 +225,24 @@ $$ language plpgsql ;
 
 
 CREATE OR REPLACE FUNCTION bruce.for_all_with_x_add_y(
-    elvisschema_ pg_namespace.nspname%TYPE
-    ,xfunc_  pg_proc.proname%TYPE
+    xfunc_  pg_proc.proname%TYPE
     ,yfunc_  pg_proc.proname%TYPE
     ,suffix_  pg_proc.proname%TYPE
-) RETURNS VOID AS $$ 
-declare 
-    t record ;
-begin
-for t in 
-    select * from bruce.find_tables_with_trigger(elvisschema_,xfunc_) loop
-    begin
-        perform bruce.drop_trigger(t.schema_,t.table_,suffix_);
-    exception
-        when others then
-    end;
-    perform bruce.add_trigger(t.schema_,t.table_,yfunc_,suffix_);
-end loop;
-end;
-$$ language plpgsql ;
+    ,before_after_  pg_proc.proname%TYPE
+    ,out schema_ pg_namespace.nspname%TYPE
+    ,out table_  pg_class.relname%TYPE
+    ,out ignore_  void
+) RETURNS SETOF RECORD AS $$ 
+select 
+    t.schema_,t.table_,bruce.add_trigger(t.schema_,t.table_,$2,$3,$4) 
+from 
+    (
+    select * from bruce.find_trigger_tables($1) 
+    except 
+    select * from bruce.find_trigger_tables($2)
+    ) as t
+order by 1,2;
+$$ language sql ;
 
 
 
@@ -271,14 +252,18 @@ CREATE OR REPLACE FUNCTION bruce.make_table_x(
     ,dedupe_func_  pg_proc.proname%TYPE
     ,new_func_  pg_proc.proname%TYPE
     ,suffix  pg_proc.proname%TYPE
-) RETURNS VOID AS $$ 
+    ,before_after_  pg_proc.proname%TYPE
+    ,out oschema_ pg_namespace.nspname%TYPE
+    ,out otable_  pg_class.relname%TYPE
+) RETURNS RECORD AS $$ 
 begin
     execute
         'select bruce.add_trigger('
             || quote_literal(schema_) || ','
             || quote_literal(table_) || ','
             || quote_literal(new_func_) || ','
-            || quote_literal(suffix) || ')'
+            || quote_literal(suffix) || ','
+            || quote_literal(before_after_) || ')'
         || ' from bruce.find_tables_in_schema(' || quote_literal(schema_) || ')' 
         || ' where table_ = ' || quote_literal(table_)
         || ' and table_ not in ('
@@ -287,6 +272,8 @@ begin
             || '() where schema_ = ' || quote_literal(schema_) 
             || ' and table_ = ' || quote_literal(table_) 
         || ')';
+    oschema_ := schema_;
+    otable_ := table_;
 end;
 $$ language plpgsql ;
 
@@ -294,33 +281,25 @@ CREATE OR REPLACE FUNCTION bruce.make_schema_x(
     schema_ pg_namespace.nspname%TYPE
     ,dedupe_func_  pg_proc.proname%TYPE
     ,new_func_  pg_proc.proname%TYPE
-    ,suffix  pg_proc.proname%TYPE
-) RETURNS VOID AS $$ 
-declare 
-    t record ;
-begin
-for t in select * from bruce.find_tables_in_schema(schema_) loop
-    perform bruce.make_table_x(schema_,t.table_,dedupe_func_,new_func_,suffix);
-end loop;
-end;
-$$ language plpgsql ;
+    ,suffix_  pg_proc.proname%TYPE
+    ,before_after_  pg_proc.proname%TYPE
+    ,out oschema_ pg_namespace.nspname%TYPE
+    ,out otable_  pg_class.relname%TYPE
+) RETURNS SETOF RECORD AS $$ 
+select bruce.make_table_x($1,t.table_,$2,$3,$4,$5) from bruce.find_tables_in_schema($1) as t;
+$$ language sql ;
 
 
 
-CREATE OR REPLACE FUNCTION bruce.for_all_with_x_drop_x(
-    elvisschema_ pg_namespace.nspname%TYPE
-    ,xfunc_  pg_proc.proname%TYPE
+CREATE OR REPLACE FUNCTION bruce.drop_all_trigger_x(
+    xfunc_  pg_proc.proname%TYPE
     ,suffix_ pg_proc.proname%TYPE
-) RETURNS VOID AS $$ 
-declare 
-    t record ;
-begin
-for t in 
-    select * from bruce.find_tables_with_trigger(elvisschema_,xfunc_) loop
-    perform bruce.drop_trigger(t.schema_,t.table_,suffix_);
-end loop;
-end;
-$$ language plpgsql ;
+    ,out schema_ pg_namespace.nspname%TYPE
+    ,out table_  pg_class.relname%TYPE
+    ,out ignore_  void
+) RETURNS SETOF RECORD AS $$
+select schema_,table_,bruce.drop_trigger(schema_, table_, $2 ) as ignore_ from bruce.find_trigger_tables( $1 );
+$$ language sql ;
 
 
 
@@ -328,17 +307,19 @@ $$ language plpgsql ;
 -- functions to add master/slave triggers to all current slave/master
 ------------------------------------------------------------------------
 
-CREATE OR REPLACE FUNCTION bruce.make_all_slave_also_master() RETURNS VOID AS $$ 
-begin
-    perform bruce.for_all_with_x_add_y('bruce','denyaccesstrigger','logtransactiontrigger','_tx');
-end;
-$$ language plpgsql ;
+CREATE OR REPLACE FUNCTION bruce.make_all_slave_also_master(
+    out schema_ pg_namespace.nspname%TYPE
+    ,out table_  pg_class.relname%TYPE
+) RETURNS SETOF RECORD AS $$ 
+select schema_, table_ from bruce.for_all_with_x_add_y('denyaccesstrigger','logtransactiontrigger','_tx','after') order by 1,2;
+$$ language sql ;
 
-CREATE OR REPLACE FUNCTION bruce.make_all_master_also_slave() RETURNS VOID AS $$ 
-begin
-    perform bruce.for_all_with_x_add_y('bruce','logtransactiontrigger','denyaccesstrigger','_deny');
-end;
-$$ language plpgsql ;
+CREATE OR REPLACE FUNCTION bruce.make_all_master_also_slave(
+    out schema_ pg_namespace.nspname%TYPE
+    ,out table_  pg_class.relname%TYPE
+) RETURNS SETOF RECORD AS $$ 
+select schema_, table_ from bruce.for_all_with_x_add_y('logtransactiontrigger','denyaccesstrigger','_deny','before') order by 1,2;
+$$ language sql ;
 
 
 
@@ -346,21 +327,19 @@ $$ language plpgsql ;
 -- functions to drop all master or slave replication triggers
 ------------------------------------------------------------------------
 
-CREATE OR REPLACE FUNCTION bruce.drop_all_slave_triggers() RETURNS VOID AS $$ 
-declare 
-    t record ;
-begin
-    perform bruce.for_all_with_x_drop_x('bruce','denyaccesstrigger','_deny');
-end;
-$$ language plpgsql ;
+CREATE OR REPLACE FUNCTION bruce.drop_all_slave_triggers(
+    out schema_ pg_namespace.nspname%TYPE
+    ,out table_  pg_class.relname%TYPE
+) RETURNS SETOF RECORD AS $$ 
+select schema_,table_ from bruce.drop_all_trigger_x('denyaccesstrigger','_deny');
+$$ language sql ;
 
-CREATE OR REPLACE FUNCTION bruce.drop_all_master_triggers() RETURNS VOID AS $$ 
-declare 
-    t record ;
-begin
-    perform bruce.for_all_with_x_drop_x('bruce','logtransactiontrigger','_tx');
-end;
-$$ language plpgsql ;
+CREATE OR REPLACE FUNCTION bruce.drop_all_master_triggers(
+    out schema_ pg_namespace.nspname%TYPE
+    ,out table_  pg_class.relname%TYPE
+) RETURNS SETOF RECORD AS $$ 
+select schema_,table_ from bruce.drop_all_trigger_x('logtransactiontrigger','_tx');
+$$ language sql ;
 
 
 
@@ -371,20 +350,20 @@ $$ language plpgsql ;
 CREATE OR REPLACE FUNCTION bruce.make_table_slave(
     schema_ pg_namespace.nspname%TYPE
     ,table_  pg_class.relname%TYPE
-) RETURNS VOID AS $$ 
-begin
-    perform bruce.make_table_x(schema_,table_,'get_slave_tables','denyaccesstrigger','_deny');
-end;
-$$ language plpgsql ;
+    ,out oschema_ pg_namespace.nspname%TYPE
+    ,out otable_  pg_class.relname%TYPE
+) RETURNS RECORD AS $$ 
+select bruce.make_table_x($1,$2,'get_slave_tables','denyaccesstrigger','_deny','before');
+$$ language sql ;
 
 CREATE OR REPLACE FUNCTION bruce.make_table_master(
     schema_ pg_namespace.nspname%TYPE
     ,table_  pg_class.relname%TYPE
-) RETURNS VOID AS $$ 
-begin
-    perform bruce.make_table_x(schema_,table_,'get_master_tables','logtransactiontrigger','_tx');
-end;
-$$ language plpgsql ;
+    ,out oschema_ pg_namespace.nspname%TYPE
+    ,out otable_  pg_class.relname%TYPE
+) RETURNS RECORD AS $$ 
+select bruce.make_table_x($1,$2,'get_master_tables','logtransactiontrigger','_tx','after');
+$$ language sql ;
 
 
 
@@ -394,17 +373,50 @@ $$ language plpgsql ;
 
 CREATE OR REPLACE FUNCTION bruce.make_schema_slave(
     schema_ pg_namespace.nspname%TYPE
-) RETURNS VOID AS $$ 
-begin
-    perform bruce.make_schema_x(schema_,'get_slave_tables','denyaccesstrigger','_deny');
-end;
-$$ language plpgsql ;
+) RETURNS SETOF RECORD AS $$ 
+select bruce.make_schema_x($1,'get_slave_tables','denyaccesstrigger','_deny','after');
+$$ language sql ;
 
-CREATE OR REPLACE FUNCTION bruce.make_table_master(
+CREATE OR REPLACE FUNCTION bruce.make_schema_master(
     schema_ pg_namespace.nspname%TYPE
-) RETURNS VOID AS $$ 
+) RETURNS SETOF RECORD AS $$ 
+select bruce.make_schema_x($1,'get_master_tables','logtransactiontrigger','_tx','before');
+$$ language sql ;
+
+
+------------------------------------------------------------------------
+-- functions to help in failover.
+------------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION bruce.make_slave_from_master(
+    newnode_id_    int
+    ,cluster_id_    int
+) RETURNS VOID AS $$
+declare 
+    curlog_id_ int;
+    curlog_ name;
 begin
-    perform bruce.make_schema_x(schema_,'get_master_tables','logtransactiontrigger','_tx');
+    execute 'create table bruce.slavesnapshotstatus_before_i_was_' || newnode_id_
+        || ' as select * from bruce.slavesnapshotstatus';
+    delete from bruce.slavesnapshotstatus;
+    select into curlog_id_ max(id) from bruce.currentlog;
+    curlog_ := 'bruce.snapshotlog_' || curlog_id_ ;
+    execute 'insert into bruce.slavesnapshotstatus ('
+        || 'clusterid,slave_xaction,master_current_xaction,master_min_xaction,'
+        || 'master_max_xaction,master_outstanding_xactions ) '
+        || 'select ' 
+        ||      cluster_id_ || ' as clusterid, '
+        ||      ' 0 as slave_xaction, '
+        ||      ' current_xaction as master_current_xaction, '
+        ||      ' min_xaction as master_min_xaction, '
+        ||      ' max_xaction as master_max_xaction, '
+        ||      ' outstanding_xactions as master_outstanding_xactions '
+        || ' from ' || curlog_ 
+        || ' where current_xaction = ('
+        ||      ' select current_xaction from ' || curlog_
+        ||      ' order by current_xaction desc limit 1'
+        || ')'
+        ;
 end;
 $$ language plpgsql ;
 
