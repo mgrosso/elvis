@@ -396,9 +396,9 @@ declare
     curlog_id_ int;
     curlog_ name;
 begin
-    execute 'create table bruce.slavesnapshotstatus_before_i_was_' || newnode_id_
+    execute 'create table bruce.slavesnapshotstatus_pre_node' || newnode_id_ || '_cluster' || cluster_id_
         || ' as select * from bruce.slavesnapshotstatus';
-    delete from bruce.slavesnapshotstatus;
+    delete from bruce.slavesnapshotstatus where clusterid = cluster_id_ ;
     select into curlog_id_ max(id) from bruce.currentlog;
     curlog_ := 'bruce.snapshotlog_' || curlog_id_ ;
     execute 'insert into bruce.slavesnapshotstatus ('
