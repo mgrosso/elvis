@@ -388,6 +388,69 @@ $$ language sql ;
 -- functions to help in failover.
 ------------------------------------------------------------------------
 
+CREATE OR REPLACE FUNCTION bruce.find_best_slave_snapshot(
+    out current_xaction bigint
+    ,out min_xaction bigint
+    ,out max_xaction bigint
+    ,out outstanding_xactions text
+) RETURNS RECORD AS $$
+declare
+    curlog_id_ int;
+    curlog_ name;
+begin
+    select into curlog_id_ max(id) from bruce.currentlog;
+    curlog_ := 'bruce.snapshotlog_' || curlog_id_ ;
+    execute 'select ' 
+        ||      ' current_xaction as master_current_xaction, '
+        ||      ' min_xaction as master_min_xaction, '
+        ||      ' max_xaction as master_max_xaction, '
+        ||      ' outstanding_xactions as master_outstanding_xactions '
+        || ' from ' || curlog_ 
+        || ' where current_xaction = ('
+        ||      ' select current_xaction from ' || curlog_
+        ||      ' order by current_xaction desc limit 1'
+        || ')'
+        into current_xaction ,min_xaction ,max_xaction ,outstanding_xactions ;
+end;
+$$ language plpgsql ;
+
+CREATE OR REPLACE FUNCTION bruce.set_slave_status(
+    clusterid_ bigint
+    ,slave_xaction_ bigint
+    ,current_xaction bigint
+    ,min_xaction bigint
+    ,max_xaction bigint
+    ,outstanding_xactions text
+) RETURNS VOID AS $$
+declare
+    n name;
+begin
+    select into n to_char(now(),'YYYYMMDD_HH_MI_SS_US')::name ;
+
+    execute 'create table bruce.slavesnapshotstatus_at_' || n
+        || ' as select * from bruce.slavesnapshotstatus';
+
+    delete from bruce.slavesnapshotstatus where clusterid = clusterid_ ;
+
+    insert into bruce.slavesnapshotstatus (
+            clusterid,
+            slave_xaction,
+            master_current_xaction,
+            master_min_xaction,
+            master_max_xaction,
+            master_outstanding_xactions 
+        ) values (
+            clusterid_, 
+            slave_xaction_,
+            current_xaction,
+            min_xaction,
+            max_xaction,
+            outstanding_xactions
+        );
+end;
+$$ language plpgsql ;
+
+
 CREATE OR REPLACE FUNCTION bruce.make_slave_from_master(
     newnode_id_    int
     ,cluster_id_    int
@@ -419,5 +482,30 @@ begin
         ;
 end;
 $$ language plpgsql ;
+
+CREATE OR REPLACE FUNCTION bruce.make_slave_from_master2(
+    newnode_id_    int
+    ,cluster_id_    int
+) RETURNS VOID AS $$
+begin
+    perform select bruce.make_slave_from_master(
+        newnode_id_,cluster_id_,
+        current_xaction, min_xaction, max_xaction, outstanding_xactions
+    ) from bruce.find_best_slave_snapshot();
+end;
+$$ language plpgsql ;
+
+
+CREATE OR REPLACE FUNCTION bruce.grant_w_on_xdoty_to_z(
+    priv_   name
+    ,schema_ pg_namespace.nspname%TYPE
+    ,table_  pg_class.relname%TYPE
+    ,to_whom_    pg_roles.rolname%TYPE
+) RETURNS VOID AS $$
+begin
+    execute 'grant ' || priv_ || ' on ' || schema_ || '.' || table_ || ' to ' || to_whom_ ;
+end;
+$$ language plpgsql ;
+
 
 
