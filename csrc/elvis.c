@@ -49,8 +49,8 @@
 #include <string.h>
 #include <signal.h>
 
-char *url = "$URL$";
-char *id = "$Id$";
+char *url = "$HeadURL$";
+char *id = "$Id: elvis.c 186 2008-05-25 22:36:00Z mgrosso $";
 
 /* For a PG extention to work version >= 8.2, it must include fmgr.h and include this source */
 #ifdef PG_MODULE_MAGIC
