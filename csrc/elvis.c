@@ -49,8 +49,8 @@
 #include <string.h>
 #include <signal.h>
 
-char *url = "$URL: https://svn.codehaus.org/bruce/branches/1.0/csrc/bruce.c $";
-char *id = "$Id: bruce.c 125 2007-12-13 07:14:48Z rklahn $";
+char *url = "$URL$";
+char *id = "$Id$";
 
 /* For a PG extention to work version >= 8.2, it must include fmgr.h and include this source */
 #ifdef PG_MODULE_MAGIC
