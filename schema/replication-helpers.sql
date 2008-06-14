@@ -1,124 +1,3 @@
-CREATE TRUSTED PROCEDURAL LANGUAGE plpgsql ;
-DROP SCHEMA bruce cascade;
-CREATE SCHEMA bruce;
-
-GRANT usage ON SCHEMA bruce TO public;
-
-CREATE TABLE bruce.replication_version
-(
-    major int,
-    minor int,
-    patch int,
-    name character(64)
-);
-
-INSERT INTO bruce.replication_version VALUES (1, 0, 0, 'Replication 1.0 release');
-
-CREATE FUNCTION bruce.applylogtransaction(text, text, text) RETURNS boolean
-        AS 'elvis.so', 'applyLogTransaction' LANGUAGE c;
-
-CREATE FUNCTION bruce.daemonmode() RETURNS integer
-        AS 'elvis.so', 'daemonMode' LANGUAGE c;
-
-CREATE FUNCTION bruce.denyaccesstrigger() RETURNS trigger
-        AS 'elvis.so', 'denyAccessTrigger' LANGUAGE c;
-
-CREATE FUNCTION bruce.logsnapshottrigger() RETURNS trigger
-        AS 'elvis.so', 'logSnapshot' LANGUAGE c;
-
-CREATE FUNCTION bruce.logsnapshot() RETURNS boolean
-        AS 'elvis.so', 'logSnapshot' LANGUAGE c;
-
-CREATE FUNCTION bruce.logtransactiontrigger() RETURNS trigger
-        AS 'elvis.so', 'logTransactionTrigger' LANGUAGE c;
-
-CREATE FUNCTION bruce.normalmode() RETURNS integer
-        AS 'elvis.so', 'normalMode' LANGUAGE c;
-
-CREATE FUNCTION bruce.applylogtransaction2(int, int, text, text, text, text) RETURNS boolean
-        AS 'elvis.so', 'applyLogTransaction2' LANGUAGE c;
-
-CREATE FUNCTION bruce.debug_fakeapplylog(int, int, text, text, text, text) RETURNS cstring
-        AS 'elvis.so', 'debug_fakeapplylog' LANGUAGE c;
-
-CREATE FUNCTION bruce.debug_setcacheitem(int, int, text, text, text) RETURNS cstring
-        AS 'elvis.so', 'debug_setcacheitem' LANGUAGE c;
-
-CREATE FUNCTION bruce.debug_peekcacheitem(int) RETURNS cstring
-        AS 'elvis.so', 'debug_peekcacheitem' LANGUAGE c;
-
-CREATE FUNCTION bruce.debug_parseinfo(int, text) RETURNS cstring
-        AS 'elvis.so', 'debug_parseinfo' LANGUAGE c;
-
-CREATE FUNCTION bruce.debug_applyinfo(int, text) RETURNS boolean
-        AS 'elvis.so', 'debug_applyinfo' LANGUAGE c;
-
-CREATE FUNCTION bruce.debug_echo(int, text) RETURNS cstring
-        AS 'elvis.so', 'debug_echo' LANGUAGE c;
-
-CREATE FUNCTION bruce.set_tightmem(int) RETURNS cstring
-        AS 'elvis.so', 'set_tightmem' LANGUAGE c;
-
-
-
-CREATE SEQUENCE bruce.currentlog_id_seq INCREMENT BY 1 NO MAXVALUE NO MINVALUE CACHE 1;
-CREATE SEQUENCE bruce.transactionlog_rowseq INCREMENT BY 1 NO MAXVALUE NO MINVALUE CACHE 1;
-
-GRANT ALL ON bruce.transactionlog_rowseq TO public;
-
-CREATE TABLE bruce.currentlog
-(
-    id integer DEFAULT nextval('bruce.currentlog_id_seq'::regclass) NOT NULL primary key,
-    create_time timestamp without time zone DEFAULT now() NOT NULL
-);
-
-GRANT select ON bruce.currentlog TO public;
-
-SELECT pg_catalog.setval('bruce.currentlog_id_seq', 1, true);
-
-insert into bruce.currentlog (id, create_time) values (1, now());
-
-CREATE TABLE bruce.snapshotlog_1 (
-	current_xaction bigint primary key,
-        min_xaction bigint NOT NULL,
-        max_xaction bigint NOT NULL,
-        outstanding_xactions text,
-        update_time timestamp default now()
-        );
-
-GRANT ALL ON bruce.snapshotlog_1 TO PUBLIC;
-
-CREATE VIEW bruce.snapshotlog AS SELECT * FROM bruce.snapshotlog_1;
-
-GRANT ALL ON bruce.snapshotlog TO PUBLIC;
-
-CREATE TABLE bruce.transactionlog_1 (
-        rowid bigint DEFAULT nextval('bruce.transactionlog_rowseq'::regclass) UNIQUE,
-        xaction bigint,
-        cmdtype character(1),
-        tabname text,
-        info text
-        );
-
-GRANT ALL ON bruce.transactionlog_1 TO PUBLIC;
-
-CREATE INDEX transactionlog_1_xaction_idx ON bruce.transactionlog_1 USING btree (xaction);
-
-CREATE VIEW bruce.transactionlog AS SELECT * FROM bruce.transactionlog_1;
-
-GRANT ALL ON bruce.transactionlog TO PUBLIC;
-
-CREATE TABLE bruce.slavesnapshotstatus (
-    clusterid bigint NOT NULL primary key,
-    slave_xaction bigint NOT NULL,
-    master_current_xaction bigint NOT NULL,
-    master_min_xaction bigint NOT NULL,
-    master_max_xaction bigint NOT NULL,
-    master_outstanding_xactions text,
-    update_time timestamp without time zone default now() NOT NULL
-);
-
-
 
 ------------------------------------------------------------------------
 -- listing functions for finding slave, master tables, etc...
@@ -387,6 +266,22 @@ $$ language sql ;
 ------------------------------------------------------------------------
 -- functions to help in failover.
 ------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION bruce.find_best_slave_snapshot_from_history(
+    clusterid bigint
+    ,nodeid    bigint
+    ,out current_xaction bigint
+    ,out min_xaction bigint
+    ,out max_xaction bigint
+    ,out outstanding_xactions text
+) RETURNS RECORD AS $$
+select 
+    master_current_xaction as current_xaction, 
+    master_min_xaction as min_xaction, 
+    master_max_xaction as max_xaction, 
+    master_outstanding_xactions as outstanding_xactions
+from  bruce.slave_snapshot_history where node_id=$2 and clusterid=$1 order by master_current_xaction desc limit 1;
+$$ language sql ;
+
 
 CREATE OR REPLACE FUNCTION bruce.find_best_slave_snapshot(
     out current_xaction bigint
@@ -483,14 +378,67 @@ begin
 end;
 $$ language plpgsql ;
 
-CREATE OR REPLACE FUNCTION bruce.make_slave_from_master2(
-    newnode_id_    int
-    ,cluster_id_    int
+
+CREATE OR REPLACE FUNCTION bruce.make_history_rules(
+    newnode_id_    bruce.slavesnapshotstatus.clusterid%TYPE
+) RETURNS VOID as $$
+begin
+    create or replace rule _a_slavesnapshotstatus_update_rule as on update to bruce.slavesnapshotstatus do also select bruce.daemonmode();
+    create or replace rule _a_slavesnapshotstatus_insert_rule as on insert to bruce.slavesnapshotstatus do also select bruce.daemonmode();
+    create or replace rule a_slavesnapshotstatus_update_rule as on update to bruce.slavesnapshotstatus do also select bruce.logsnapshot();
+    create or replace rule a_slavesnapshotstatus_insert_rule as on insert to bruce.slavesnapshotstatus do also select bruce.logsnapshot();
+    execute 'create or replace rule slavesnapshotstatus_update_rule as 
+        on update to bruce.slavesnapshotstatus do also insert into bruce.slave_snapshot_history values ( ' || newnode_id_ || ', NEW.* )';
+    execute 'create or replace rule slavesnapshotstatus_insert_rule as 
+        on insert to bruce.slavesnapshotstatus do also insert into bruce.slave_snapshot_history values ( '|| newnode_id_ || ', NEW.* )';
+end;
+$$ language plpgsql;
+
+CREATE OR REPLACE FUNCTION bruce.make_history_table(
+    newnode_id_    bruce.slavesnapshotstatus.clusterid%TYPE
+) RETURNS VOID as $$
+declare 
+    discard_ record;
+begin
+    create table bruce.slave_snapshot_history as select newnode_id_ as node_id, s.* from bruce.slavesnapshotstatus as s ;
+    create unique index slave_snapshot_history_u1 on bruce.slave_snapshot_history ( node_id, clusterid, master_current_xaction );
+    select into discard_ * from bruce.make_table_slave('bruce','slave_snapshot_history');
+    select into discard_ * from bruce.make_table_master('bruce','slave_snapshot_history');
+    select bruce.make_history_rules(newnode_id_);
+end;
+$$ language plpgsql;
+
+CREATE OR REPLACE FUNCTION bruce.remake_history_table(
+    newnode_id_    bruce.slavesnapshotstatus.clusterid%TYPE
+) RETURNS VOID as $$
+declare 
+    discard_ record;
+    n        name;
+begin
+    select into discard_ * 
+    from pg_class 
+    where 
+        relname = 'slave_snapshot_history' 
+        and relnamespace = (
+            select oid from pg_namespace where nspname like 'bruce' 
+        );
+    if found then
+        select into n to_char(now(),'YYYYMMDD_HH_MI_SS_US')::name ;
+        execute 'alter table bruce.slave_snapshot_history rename to slave_snapshot_history_at_' || n;
+    end if;
+    perform bruce.make_history_table(newnode_id_); 
+end;
+$$ language plpgsql;
+
+CREATE OR REPLACE FUNCTION bruce.make_slave_from_master_backup(
+    newnode_id_    bruce.slavesnapshotstatus.clusterid%TYPE
+    ,cluster_id_    bruce.slavesnapshotstatus.clusterid%TYPE
 ) RETURNS VOID AS $$
 begin
-    perform select bruce.make_slave_from_master(
-        newnode_id_,cluster_id_,
-        current_xaction, min_xaction, max_xaction, outstanding_xactions
+    perform bruce.remake_history_table(newnode_id_);
+    perform bruce.make_history_rules(newnode_id_);
+    perform bruce.set_slave_status(
+        cluster_id_, 0, current_xaction, min_xaction, max_xaction, outstanding_xactions
     ) from bruce.find_best_slave_snapshot();
 end;
 $$ language plpgsql ;
