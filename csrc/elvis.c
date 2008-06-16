@@ -144,6 +144,7 @@ typedef struct statement_cache_item_struct  {
     char **             raw_old;
     char **             raw_new;
     char **             decoded_values;
+    char *              debug_info ;
 } statement_cache_item  ;
 
 /* make a copy. should go away when this backend goes away */
@@ -372,6 +373,7 @@ static statement_cache_item  *  make_statement_cache_item(
             giveback->query_string )));
     }
     giveback->plan=SPI_saveplan(plan);
+    giveback->debug_info=uninitialized;//fixes core dropping bug! (why?) debug_cache_item(giveback);
     clean_cache_item(giveback);
     return giveback;
 };
@@ -542,7 +544,7 @@ static statement_cache_item * get_or_make_cache_item(
         const char *param_info_indices_delimited
         ){
         statement_cache_item *giveback;
-        char *item_debug;
+        //char *item_debug;
         giveback = get_cached_item(cache_index );
         if(giveback != NULL ){
             return giveback;
@@ -554,14 +556,11 @@ static statement_cache_item * get_or_make_cache_item(
                         param_info_indices_delimited
                         );
         store_cache_item(cache_index,giveback);
-        item_debug=debug_cache_item(giveback);
-        ereport(INFO,(errmsg_internal("elvis.c caching query at index=%zu cache=%s", cache_index,item_debug)));
-        bruce_free(giveback);
+        ereport(NOTICE,(errmsg_internal("elvis.c caching query at index=%zu cache=%s", cache_index,giveback->debug_info)));
         return giveback;
 }
 
 /* 1- parse the change_info, placing pointers to raw base64 of old and new values into old/new arrays */
-static void parse_change_info(statement_cache_item *item,char *change_info){
     // in bruce.transactionlog you will see rows like this...
     //
     // rowid|xaction|cmdtype|tabname|info
@@ -599,6 +598,12 @@ static void parse_change_info(statement_cache_item *item,char *change_info){
     //   "id:int8:MTA4Nw==:MTA4Nw==|site_id:int8:MTA2:MTA2"
     //    c
     //
+#if 0
+#define PARSEDEBUG ereport(LOG,(errmsg_internal("%s:%u field=%zu offset=%tu start=(%s) c=(%s) cache_item debug: %s", __FILE__,__LINE__,f,c-change_info,change_info,c,item->debug_info)))
+#else
+#define PARSEDEBUG
+#endif
+static void parse_change_info(statement_cache_item *item,char *change_info){
     size_t f=0;
     size_t skip=2;
     char *c=change_info;
@@ -607,19 +612,21 @@ static void parse_change_info(statement_cache_item *item,char *change_info){
         c && *c && f < item->num_info_columns_to_parse ;
         ++f
     ){  
+        PARSEDEBUG;
         for(skip=2; skip && c && *c; --skip ){
             c=strchr(c,':');
             if(!c || !*c || *c != ':' ){
-                ereport(ERROR,(errmsg_internal("could not parse info string: problem skipping first two. field=%zu first part of info string=%s", f,change_info)));
+                ereport(ERROR,(errmsg_internal("could not parse info string: problem skipping first two. field=%zu first part of info string=(%s) cache_item debug: %s", f,change_info,item->debug_info)));
             }
             ++c;//move past : to start of type description or start of raw_old
         }
         if(!c || !*c || *c=='|' ){
-            ereport(ERROR,(errmsg_internal("could not parse info string: raw_old looks wrong. field=%zu first part of info string=%s", f,change_info)));
+            ereport(ERROR,(errmsg_internal("could not parse info string: raw_old looks wrong. field=%zu first part of info string=(%s) cache_item debug: %s", f,change_info, item->debug_info)));
         }
         //   "id:int8:MTA4Nw==:MTA4Nw==|site_id:int8:MTA2:MTA2"
         //            c
         //
+        PARSEDEBUG ;
         item->raw_old[f]=c;
         if( *c==':' ){
             //noop: zero length field, eg id:varchar::MTA4Nw==|
@@ -627,30 +634,33 @@ static void parse_change_info(statement_cache_item *item,char *change_info){
             c=strchr(c,':');
         }
         if(!c || !*c || *c!=':' ){
-            ereport(ERROR,(errmsg_internal("could not parse info string: missing third ':'.  field=%zu first part of info string: %s", f,change_info)));
+            ereport(ERROR,(errmsg_internal("could not parse info string: missing third ':'.  field=%zu first part of info string: (%s) cache_item debug: %s", f,change_info, item->debug_info)));
         }
         *c='\0';//null terminate the raw_old
         ++c;//advance to the first char of raw_new
+        PARSEDEBUG ;
         if(f==item->num_info_columns_to_parse-1 && ! *c ){
             //the raw_new of the last field is zero length
             item->raw_new[f]=c;
         }else if( !*c || *c==':' ){
-            ereport(ERROR,(errmsg_internal("could not parse info string: raw_new looks wrong. field=%zu first part of info string: %s",f,change_info)));
+            ereport(ERROR,(errmsg_internal("could not parse info string: raw_new looks wrong. field=%zu first part of info string: (%s) cache_item debug: %s",f,change_info, item->debug_info)));
         }
         //   "id:int8:MTA4Nw==\0MTA4Nw==|site_id:int8:MTA2:MTA2"
         //            ^         c
         //raw_old[i]__|
         //
         item->raw_new[f]=c;
-        if(f<item->num_info_columns_to_parse -1 ){
+        if( f <  ( item->num_info_columns_to_parse - 1 )){
             if(*c=='|'){ 
                 //zero length field, eg id:varchar:MTA4Nw==:|
                 //noop: previous field was empty, so dont advance c, we are already on a '|'
+                PARSEDEBUG ;
             }else{
                 c=strchr(c,'|');
+                PARSEDEBUG ;
             }
             if( !c || !*c || *c!= '|' ){
-                ereport(ERROR,(errmsg_internal("could not parse info string: expected '|'. field=%zu first part of info string: %s",f,change_info)));
+                ereport(ERROR,(errmsg_internal("could not parse info string: expected '|'. field=%zu first part of info string: (%s) cache_item debug: %s",f,change_info, item->debug_info)));
             }
             //   "id:int8:MTA4Nw==\0MTA4Nw==|site_id:int8:MTA2:MTA2"
             //            ^         ^       c
@@ -658,8 +668,9 @@ static void parse_change_info(statement_cache_item *item,char *change_info){
             *c='\0';
             ++c;
             if( !*c || *c== '|' || *c==':' ){
-                ereport(ERROR,(errmsg_internal("could not parse info string: expected to be on first char of next columns name. field=%zu first part of info string: %s", f,change_info)));
+                ereport(ERROR,(errmsg_internal("could not parse info string: expected to be on first char of next columns name. field=%zu first part of info string: (%s) cache_item debug: %s", f,change_info, item->debug_info)));
             }
+            PARSEDEBUG ;
             //   "id:int8:MTA4Nw==\0MTA4Nw==\0site_id:int8:MTA2:MTA2"
             //            ^         ^         c
             //raw_old[i]__|         |____________raw_new[i]
@@ -669,10 +680,11 @@ static void parse_change_info(statement_cache_item *item,char *change_info){
             //                                             ^     ^   c
             //                             raw_old[i]______|     |____________raw_new[i]
             //
+            PARSEDEBUG ;
         }
     }
     if( f < item->num_info_columns_to_parse ){
-        ereport(ERROR,(errmsg_internal("could not parse info string: not enough columns in info string. field=%zu first part of info string: %s",f,change_info)));
+        ereport(ERROR,(errmsg_internal("could not parse info string: not enough columns in info string. field=%zu first part of info string: (%s) cache_item debug: %s",f,change_info, item->debug_info)));
     }
 }
 
