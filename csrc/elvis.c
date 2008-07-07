@@ -63,15 +63,26 @@ PG_MODULE_MAGIC;
 #define success 1
 #define failure 0
 
-Datum serializeRow(HeapTuple new_row,HeapTuple old_row,TupleDesc desc);
-Datum serializeCol(char *name,char *type,char *old,char *new);
-char *ConvertDatum2CString(Oid type,Datum d,bool isnull);
-char *deB64(char *s,bool *b);
-char *Datum2CString(Datum d);
-char *currentLogID(void);
-void insertTransactionLog(char *cmd_type,char *schema,char *table,Datum row_data);
-Oid getTypeOid(char *typeName);
-bool colInUnique(char **uCols,int uColsCount,char *colName);
+static Datum serializeRow(HeapTuple new_row,HeapTuple old_row,TupleDesc desc);
+static Datum serializeCol(char *name,char *type,char *old,char *new);
+static char *Datum2CString(Datum d);
+static char *getCurrentLogId(int *);
+static void insertTransactionLog(char *cmd_type,char *schema,char *table,Datum row_data);
+static Oid getTypeOid(char *typeName);
+
+static int spi_connected=0;
+static void bruce_spi_start(const char *);
+static void bruce_spi_finish(void);
+static int bruce_spi_exec( const char *query, const char *err, int maxrows, int minresults, int desired_result  );
+static int bruce_spi_select( const char *query, const char *err, int maxrows, int minresults );
+//static int bruce_spi_update( const char *query, const char *err, int maxrows, int minresults );
+//static int bruce_spi_insert( const char *query, const char *err, int maxrows, int minresults );
+static char *get_first_row_first_column_str(void);
+//
+//mg: putting explicit void into definition of Datum get_first_row_first_column_datum() here
+//eliminated warning about used before definition.  did have this issue with _str() version
+//gcc (GCC) 4.1.1 (Gentoo 4.1.1-r3)
+static Datum get_first_row_first_column_datum(void);
 
 PG_FUNCTION_INFO_V1(logTransactionTrigger);
 Datum logTransactionTrigger(PG_FUNCTION_ARGS);
@@ -83,8 +94,6 @@ PG_FUNCTION_INFO_V1(daemonMode);
 Datum daemonMode(PG_FUNCTION_ARGS);
 PG_FUNCTION_INFO_V1(normalMode);
 Datum normalMode(PG_FUNCTION_ARGS);
-PG_FUNCTION_INFO_V1(applyLogTransaction);
-Datum applyLogTransaction(PG_FUNCTION_ARGS);
 
 PG_FUNCTION_INFO_V1(applyLogTransaction2);
 Datum applyLogTransaction2(PG_FUNCTION_ARGS);
@@ -104,13 +113,21 @@ Datum debug_echo(PG_FUNCTION_ARGS);
 PG_FUNCTION_INFO_V1(set_tightmem);
 Datum set_tightmem(PG_FUNCTION_ARGS);
 
+PG_FUNCTION_INFO_V1(get_xaction);
+Datum get_xaction(PG_FUNCTION_ARGS);
+PG_FUNCTION_INFO_V1(get_xaction_highbits);
+Datum get_xaction_highbits(PG_FUNCTION_ARGS);
+PG_FUNCTION_INFO_V1(get_xaction_mask);
+Datum get_xaction_mask(PG_FUNCTION_ARGS);
+PG_FUNCTION_INFO_V1(get_current_log);
+Datum get_current_log(PG_FUNCTION_ARGS);
 
-#define MODE_UNSET 0
+
 #define MODE_NORMAL 1
 #define MODE_DAEMON 2
 
 #define INITIAL_CACHE_SIZE 100
-#define STACK_STRING_SIZE 10240
+#define STACK_STRING_SIZE 2048
 
 #define NO_TIGHT_MEM 0
 #define TIGHT_MEM 1
@@ -119,7 +136,13 @@ Datum set_tightmem(PG_FUNCTION_ARGS);
 static int replication_mode = MODE_NORMAL; 
 static int tight_mem = NO_TIGHT_MEM; 
 
+/* postgresql is a forking server, so thread safety is not an issue */
 static TransactionId currentXid = InvalidTransactionId;
+static int64 xactionMask = 0;
+static int64 xactionMaskInit = 0;
+static int64 xactionHighBits = 0;
+static char *currentLogId = 0;
+static void *insertTransactionLogPlan = NULL;
 
 /* 
  * structure used to cache query plans across transactions, as well as other
@@ -242,6 +265,42 @@ static void applyLogTransaction2_inner(
     char *param_info_indices_delimited ,
     char *change_info  
     );
+
+
+
+/* declarations done, implementation starts */
+
+static void bruce_spi_start(const char *dbg){
+    int connect_ret;
+    //
+    //the SPI_push/pop connect/disconnect model is broken at least for 8.1.10
+    //push() then connect fails when c calls sql which invokes c which connects
+    //for now, I just unconditionally connect, and make sure to call bruce_spi_start/finish
+    //from every externally visible function, and never call them from any internal function.
+    //
+    //if(spi_connected!=0){
+    //    ereport(NOTICE,(errmsg_internal("bruce_spi_start(): pushing stack for %s to %i",
+    //        dbg,spi_connected+1)));
+    //    SPI_push();
+    //}
+    //ereport(NOTICE,(errmsg_internal("bruce_spi_start(): about to SPI_connect() for %s",dbg)));
+    connect_ret = SPI_connect();
+    if(connect_ret<0){
+        ereport(ERROR,(errmsg_internal(
+                "bruce_spi_start(): could not SPI_connect() from %s, result=%i",dbg,connect_ret)));
+    }
+    ++spi_connected;
+}
+
+static void bruce_spi_finish(void){
+    //ereport(NOTICE,(errmsg_internal("bruce_spi_finish(): doing SPI_finish()")));
+    SPI_finish();
+    if(--spi_connected > 0){
+        //ereport(NOTICE,(errmsg_internal("bruce_spi_finish(): doing SPI_pop(): depth %i",
+        //        spi_connected)));
+        //SPI_pop();
+    }
+}
 
 static char *  bruce_copy_string( const char *src ){
     unsigned int len ;
@@ -373,7 +432,12 @@ static statement_cache_item  *  make_statement_cache_item(
             giveback->query_string )));
     }
     giveback->plan=SPI_saveplan(plan);
-    giveback->debug_info=uninitialized;//fixes core dropping bug! (why?) debug_cache_item(giveback);
+    //if(0) fixes core dropping bug! (but why does debug_cache_item(giveback); cause core drop? )
+    if(0){
+        giveback->debug_info=debug_cache_item(giveback);
+    }else{
+        giveback->debug_info=uninitialized;
+    }
     clean_cache_item(giveback);
     return giveback;
 };
@@ -738,10 +802,10 @@ static void execute_query(statement_cache_item *item ){
         ereport(ERROR,(errmsg_internal("SPI_execp() failed")));
     }
     if (SPI_processed!=1) {
-        ereport(ERROR,(errmsg_internal("%d rows updated, deleted, or inserted. Expected one and only one row.",
-                   SPI_processed)));
+        ereport(ERROR,(errmsg_internal(
+            "%d rows updated, deleted, or inserted. Expected one and only one row.",
+            SPI_processed)));
     }
-    SPI_finish();
 }
 
 static void applyLogTransaction2_inner(
@@ -753,9 +817,6 @@ static void applyLogTransaction2_inner(
     char *param_info_indices_delimited ,
     char *change_info  
     ){
-    if (SPI_connect()<0){
-        ereport(ERROR,(errmsg_internal("SPI_connect failed in daemonMode()")));
-    }
     if (!num_params || 
             ! query_string || ! *query_string || 
             ! change_info || ! *change_info || 
@@ -789,114 +850,15 @@ Datum applyLogTransaction2(PG_FUNCTION_ARGS) {
 
     ereport(NOTICE,(errmsg_internal("info:%zu,%zu,%s,%s,%s,%s",cache_index,num_params,query_string,param_type_names_delimited,param_info_indices_delimited,change_info)));
     replication_mode=MODE_DAEMON;
+    bruce_spi_start("applyLogTransaction2");
     applyLogTransaction2_inner(&cache_item,
         cache_index, num_params, query_string,
         param_type_names_delimited, param_info_indices_delimited, change_info);
     execute_query(cache_item);
-    SPI_finish();
+    bruce_spi_finish();
     return BoolGetDatum(success);
 };
 
-
-Datum debug_fakeapplylog(PG_FUNCTION_ARGS) {
-    statement_cache_item * cache_item ;
-    char *giveback ;
-    size_t cache_index  =                 PG_GETARG_UINT32(0);//shared index used for memoizing.
-    size_t num_params  =                  PG_GETARG_UINT32(1);//number of question marks in sql
-    char *query_string =                  Datum2CString(PG_GETARG_DATUM(2));//sql query for dml
-    char *param_type_names_delimited =    Datum2CString(PG_GETARG_DATUM(3));//pipe delimited parameter type names
-    char *param_info_indices_delimited =  Datum2CString(PG_GETARG_DATUM(4));//pipe delimited indices into the info string, with negative numbers indicating to use old values.
-    char *change_info  =                  Datum2CString(PG_GETARG_DATUM(5));// bruce.transactinlog.info string
-
-    applyLogTransaction2_inner(&cache_item,
-        cache_index, num_params, query_string,
-        param_type_names_delimited, param_info_indices_delimited, change_info);
-
-    giveback =debug_cache_item(cache_item);
-    SPI_finish();
-    PG_RETURN_CSTRING( giveback );
-}
-
-Datum debug_setcacheitem(PG_FUNCTION_ARGS){
-    statement_cache_item * cache_item ;
-    char *giveback ;
-    size_t cache_index  =                 PG_GETARG_UINT32(0);//shared index used for memoizing.
-    size_t num_params  =                  PG_GETARG_UINT32(1);//number of question marks in sql
-    char *query_string =                  Datum2CString(PG_GETARG_DATUM(2));//sql query for dml
-    char *param_type_names_delimited =    Datum2CString(PG_GETARG_DATUM(3));//pipe delimited parameter type names
-    char *param_info_indices_delimited =  Datum2CString(PG_GETARG_DATUM(4));//pipe delimited indices into the info string, with negative numbers indicating to use old values.
-    if (SPI_connect()<0){
-        ereport(ERROR,(errmsg_internal("SPI_connect failed in daemonMode()")));
-    }
-    if (!num_params || 
-            ! query_string || ! *query_string || 
-            ! param_type_names_delimited  || ! *param_type_names_delimited ||
-            ! param_info_indices_delimited  || ! *param_info_indices_delimited ) {
-        ereport(ERROR,(errmsg_internal("null or zero length argument")));
-    }
-    store_cache_item(cache_index,NULL);
-    cache_item =  get_or_make_cache_item(
-        cache_index, num_params, query_string,
-        param_type_names_delimited, param_info_indices_delimited);
-    giveback =debug_cache_item(cache_item);
-    SPI_finish();
-    PG_RETURN_CSTRING( giveback );
-}
-
-Datum debug_peekcacheitem(PG_FUNCTION_ARGS){
-    char *giveback ;
-    size_t cache_index  =                 PG_GETARG_UINT32(0);//shared index used for memoizing.
-    giveback =debug_cache_item(get_cached_item(cache_index));
-    SPI_finish();
-    PG_RETURN_CSTRING( giveback );
-}
-
-Datum debug_parseinfo(PG_FUNCTION_ARGS){
-    statement_cache_item * cache_item ;
-    char *giveback ;
-    size_t cache_index  =                 PG_GETARG_UINT32(0);//shared index used for memoizing.
-    char *change_info  =                  Datum2CString(PG_GETARG_DATUM(1));// bruce.transactinlog.info string
-    if (SPI_connect()<0){
-        ereport(ERROR,(errmsg_internal("SPI_connect failed in daemonMode()")));
-    }
-    if ( ! change_info  || ! *change_info ) {
-        ereport(ERROR,(errmsg_internal("null or zero length argument")));
-    }
-    cache_item =  get_cached_item(cache_index);
-    if ( ! cache_item  ) {
-        ereport(ERROR,(errmsg_internal("cache index %zu is not initialized",cache_index)));
-    }
-    parse_change_info(cache_item,change_info);
-    decode_values(cache_item);
-    giveback =debug_cache_item(cache_item);
-    SPI_finish();
-    clean_cache_item(cache_item);
-    PG_RETURN_CSTRING( giveback );
-}
-
-Datum debug_applyinfo(PG_FUNCTION_ARGS){
-    statement_cache_item * cache_item ;
-    size_t cache_index  =                 PG_GETARG_UINT32(0);//shared index used for memoizing.
-    char *change_info  =                  Datum2CString(PG_GETARG_DATUM(1));// bruce.transactinlog.info string
-    if (SPI_connect()<0){
-        ereport(ERROR,(errmsg_internal("SPI_connect failed in daemonMode()")));
-    }
-    if ( ! change_info  || ! *change_info ) {
-        ereport(ERROR,(errmsg_internal("null or zero length argument")));
-    }
-    cache_item =  get_cached_item(cache_index);
-    if ( ! cache_item  ) {
-        ereport(ERROR,(errmsg_internal("cache index %zu is not initialized",cache_index)));
-    }
-    parse_change_info(cache_item,change_info);
-    ereport(NOTICE,(errmsg_internal(debug_cache_item(cache_item))));
-    decode_values(cache_item);
-    ereport(NOTICE,(errmsg_internal(debug_cache_item(cache_item))));
-    execute_query(cache_item);
-    SPI_finish();
-    clean_cache_item(cache_item);
-    return BoolGetDatum(success);
-}
 
 Datum debug_echo(PG_FUNCTION_ARGS){
     char *giveback ;
@@ -904,15 +866,13 @@ Datum debug_echo(PG_FUNCTION_ARGS){
     char *query_string ;
     cache_index  =                 PG_GETARG_UINT32(0);//shared index used for memoizing.
     query_string =                  Datum2CString(PG_GETARG_DATUM(1));//sql query for dml
-    if (SPI_connect()<0){
-        ereport(ERROR,(errmsg_internal("SPI_connect failed in daemonMode()")));
-    }
+    bruce_spi_start("debug_echo");
     if ( ! query_string  || ! cache_index ) {
         ereport(ERROR,(errmsg_internal("null or zero length or zero argument")));
     }
     giveback =bruce_copy_string(query_string);
-    SPI_finish();
     //ereport(ERROR,(errmsg_internal("got here: %s",giveback)));
+    bruce_spi_finish();
     PG_RETURN_POINTER( giveback );
 }
 
@@ -926,303 +886,90 @@ Datum set_tightmem(PG_FUNCTION_ARGS){
     return BoolGetDatum(failure);
 }
 
+static int64 get_xaction_private(){
+    int64 ret = GetTopTransactionId();
+    return ret;
+}
 
-/* Apply an update, delete, or insert logged by logTransactionTrigger to a 
-   specified table */
-Datum applyLogTransaction(PG_FUNCTION_ARGS) {
-  char *tTypeS=Datum2CString(PG_GETARG_DATUM(0));
-  char *tTableS=Datum2CString(PG_GETARG_DATUM(1));
-  char *tInfoS=Datum2CString(PG_GETARG_DATUM(2));
-  char *cols[1024];
-  struct colS {
-    char *colName;
-    char *colType;
-    Oid typInput; /* Needed to convert a string back to the pg internal representation of a type */
-    Oid typIOParam; /* Ditto */
-    char *oldColS;
-    bool oldIsNull;
-    char *newColS;
-    bool newIsNull;
-  } colSs[1024];
-  void *plan;
-  Oid plan_types[2048];
-  Datum plan_values[2048];
-  char query[STACK_STRING_SIZE];
-  char *uCols[1024];
-  int uColsCount=0;
- int numCols = 0;
-  int bindParms = 0;
-  int i;
-  int queryResult;
+Datum get_xaction(PG_FUNCTION_ARGS){
+    PG_RETURN_INT64(get_xaction_private());
+}
 
-  ereport(DEBUG1,(errmsg_internal("info:%s",tInfoS)));
-
-  /* Connect to the Server Programming Interface */
-  if (SPI_connect()<0)
-    ereport(ERROR,(errmsg_internal("SPI_connect failed in applyLogTransaction()")));
-
-  /* Break up the info string into Column tokens */
-  numCols=0;
-  for (cols[numCols]=strsep(&tInfoS,colSep);cols[numCols];cols[numCols]=strsep(&tInfoS,colSep)) {
-    numCols++;
-  }
-
-  /* Deseralize each column */
-  for (i=0;i<numCols;i++) {
-    colSs[i].colName=strsep(&cols[i],fieldSep);
-    colSs[i].colType=strsep(&cols[i],fieldSep);
-    colSs[i].oldColS=deB64(strsep(&cols[i],fieldSep),&colSs[i].oldIsNull);
-    colSs[i].newColS=deB64(strsep(&cols[i],fieldSep),&colSs[i].newIsNull);
-    getTypeInputInfo(getTypeOid(colSs[i].colType),&colSs[i].typInput,&colSs[i].typIOParam);
-  }
-
-  /* Does this table have a primary key, or lacking that, a unique index */
-  /* If we come out of this code with uColsCount>0, then, yes. */
-  sprintf(query,"select pg_get_indexdef(indexrelid) from pg_index where indisunique = true and indrelid = (select oid from pg_class where relname = substring('%s' from '%s') and relnamespace = (select oid from pg_namespace where nspname = substring('%s' from '%s'))) and indexprs is null order by indisprimary desc",tTableS,"\\\\.(.*)$",tTableS,"^(.*)\\\\.");
-  plan=SPI_prepare(query,0,plan_types);
-  queryResult=SPI_exec(query,1);
-  if (queryResult<0) {
-    ereport(ERROR,(errmsg_internal("SPI_execp() failed for p/uidx")));
-  }
-  uCols[0]='\0';
-  if (SPI_processed>0) {
-    char *bos,*eos, *uidx;
-    uidx=SPI_getvalue(SPI_tuptable->vals[0],SPI_tuptable->tupdesc,1);
-    ereport(DEBUG2,(errmsg_internal("p/uidx:%s",uidx)));
-    /* We are processing a string that looks like this:
-       CREATE UNIQUE INDEX category_promotion_pkey ON sites.category_promotion USING btree (category_id, promotion_id)
-       and out of this we want the uCols array to look like:
-       uCols[0]="category_id";
-       uCols[1]="promotion_id";
-       
-       but we also need to handle the case like this:
-       CREATE UNIQUE INDEX web_set_pkey ON heartbeat.web_set USING btree ("time")
-       where the col list begins or ends with a reserved word, which PgSQL will put in double
-       quotes, which is why we are looking for the col string to begin with either (" or just (
-       , and similary for the end of the string.
-    */
-    if ((bos=strstr(uidx,"(\""))) {
-      bos+=2;
-    } else {
-      if ((bos=strstr(uidx,"("))) {
-	bos++;
-      } else {
-	ereport(ERROR,(errmsg_internal("Unable to find begining of unique column list from %s",uidx)));
-      }
+static int64 get_xaction_mask_private(){
+    char *s;
+    if(xactionMaskInit != 1 ){
+        bruce_spi_select(
+            "select xaction_mask from bruce.log_rotate_xaction_bitmask",
+            "could not select xaction_mask from bruce.log_rotate_xaction_bitmask",
+            1,1
+        );
+        s=get_first_row_first_column_str();
+        //ereport(NOTICE,(errmsg_internal("mask raw %s",s)));
+        xactionMask = DatumGetInt64(DirectFunctionCall1(int8in,CStringGetDatum(s)));
+        xactionMaskInit = 1;
     }
-    if ((eos=strstr(bos,"\")")) || (eos=strstr(bos,")"))) {
-      eos[0]='\0';
-    } else {
-      ereport(ERROR,(errmsg_internal("Unable to find end of unique column list from %s",uidx)));
-    }
-    ereport(DEBUG2,(errmsg_internal("bos:%s",bos)));
-#define DELIM "\", "
-    for (uCols[uColsCount]=strsep(&bos,DELIM);
-	 uCols[uColsCount];
-	 uCols[uColsCount]=strsep(&bos,DELIM)) {
-      if (strlen(uCols[uColsCount])!=0) {
-	ereport(DEBUG2,(errmsg_internal("uCols[%d]:%s",uColsCount,uCols[uColsCount])));
-	uColsCount++;
-      }
-    }
-  }
+    return xactionMask;
+}
 
-  switch (tTypeS[0]) {
-  case 'I':
-    /* Insert */
-    {
-      char values[STACK_STRING_SIZE];
-      char tempS[STACK_STRING_SIZE];
-      sprintf(query,"insert into %s (",tTableS);
-      sprintf(values," values (");
-      for (i=0;i<numCols;i++) {
-	sprintf(tempS,"%s%s",query,colSs[i].colName);
-	strcpy(query,tempS);
-	if (colSs[i].oldIsNull) {
-	  sprintf(tempS,"%sNULL",values);
-	  strcpy(values,tempS);
-	} else {
-	  bindParms++;
-	  sprintf(tempS,"%s$%d",values,bindParms);
-	  strcpy(values,tempS);
-	  ereport(DEBUG1,(errmsg_internal("%s $%d:%s",
-					  colSs[i].colName,
-					  bindParms,
-					  colSs[i].oldColS)));
-	  plan_types[bindParms-1]=getTypeOid(colSs[i].colType);
-	  /* Convert string to a Datum of the right type */
-	  plan_values[bindParms-1]=OidFunctionCall3(colSs[i].typInput,
-						    CStringGetDatum(colSs[i].oldColS),
-						    ObjectIdGetDatum(colSs[i].typIOParam),
-						    Int32GetDatum(-1));
-	}
-	/* Not the last col? Add appropritate field seperators */
-	if (i<numCols-1) {
-	  sprintf(tempS,"%s,",query);
-	  strcpy(query,tempS);
-	  sprintf(tempS,"%s,",values);
-	  strcpy(values,tempS);
-	}
-      }
-      sprintf(tempS,"%s)%s)",query,values);
-      strcpy(query,tempS);
-    }
-    break;
-  case 'U':
-    /* Update */
-    {
-      char whereC[STACK_STRING_SIZE];
-      char tempS[STACK_STRING_SIZE];
-      int numUniqueInWhere=0;
-      bindParms = 0;
-      sprintf(query,"update %s set ",tTableS);
-      sprintf(whereC,"where ");
-      for (i=0;i<numCols;i++) {
-	if (colInUnique(uCols,uColsCount,colSs[i].colName)) {
-	  if (colSs[i].oldIsNull) {
-	    sprintf(tempS,"%s%s is null",whereC,colSs[i].colName);
-	    strcpy(whereC,tempS);
-	  } else {
-	    bindParms++;
-	    sprintf(tempS,"%s%s = $%d",whereC,colSs[i].colName,bindParms);
-	    strcpy(whereC,tempS);
-	    ereport(DEBUG1,(errmsg_internal("%s $%d:%s",
-					    colSs[i].colName,
-					    bindParms,
-					    colSs[i].oldColS)));
-	    plan_types[bindParms-1]=getTypeOid(colSs[i].colType);
-	    plan_values[bindParms-1]=OidFunctionCall3(colSs[i].typInput,
-						      CStringGetDatum(colSs[i].oldColS),
-						      ObjectIdGetDatum(colSs[i].typIOParam),
-						      Int32GetDatum(-1));
-	  }
-	  numUniqueInWhere++;
-	  if ((numUniqueInWhere<uColsCount) || 
-	      ((uColsCount == 0) && (i<numCols-1))) {
-	    sprintf(tempS,"%s and ",whereC);
-	    strcpy(whereC,tempS);
-	  }
-	}
-	if (colSs[i].newIsNull) {
-	  sprintf(tempS,"%s%s = null",query,colSs[i].colName);
-	  strcpy(query,tempS);
-	} else {
-	  bindParms++;
-	  sprintf(tempS,"%s%s = $%d",query,colSs[i].colName,bindParms);
-	  strcpy(query,tempS);
-	  ereport(DEBUG1,(errmsg_internal("%s $%d:%s",
-					  colSs[i].colName,
-					  bindParms,
-					  colSs[i].newColS)));
-	  plan_types[bindParms-1]=getTypeOid(colSs[i].colType);
-	  plan_values[bindParms-1]=OidFunctionCall3(colSs[i].typInput,
-						    CStringGetDatum(colSs[i].newColS),
-						    ObjectIdGetDatum(colSs[i].typIOParam),
-						    Int32GetDatum(-1));
-	}
-	if (i<numCols-1) {
-	  sprintf(tempS,"%s, ",query);
-	  strcpy(query,tempS);
-	}
-      }
-      sprintf(tempS,"%s %s",query,whereC);
-      strcpy(query,tempS);
-    }
-    break;
-  case 'D':
-    /* Delete */
-    {
-      char tempS[STACK_STRING_SIZE];
-      int numUniqueInWhere=0;
-      bindParms = 0;
-      sprintf(query,"delete from %s where ",tTableS);
-      for (i=0;i<numCols;i++) {
-	if (colInUnique(uCols,uColsCount,colSs[i].colName)) {
-	  if (colSs[i].oldIsNull) {
-	    sprintf(tempS,"%s%s is null",query,colSs[i].colName);
-	    strcpy(query,tempS);
-	  } else {
-	    bindParms++;
-	    sprintf(tempS,"%s%s = $%d",query,colSs[i].colName,bindParms);
-	    strcpy(query,tempS);
-	    ereport(DEBUG1,(errmsg_internal("%s $%d:%s",
-					    colSs[i].colName,
-					    bindParms,
-					    colSs[i].oldColS)));
-	    plan_types[bindParms-1]=getTypeOid(colSs[i].colType);
-	    plan_values[bindParms-1]=OidFunctionCall3(colSs[i].typInput,
-						      CStringGetDatum(colSs[i].oldColS),
-						      ObjectIdGetDatum(colSs[i].typIOParam),
-						      Int32GetDatum(-1));
-	  }
-	  numUniqueInWhere++;
-	  if ((numUniqueInWhere<uColsCount) || 
-	      ((uColsCount == 0) && (i<numCols-1))) {
-	    sprintf(tempS,"%s and ",query);
-	    strcpy(query,tempS);
-	  }
-	}
-      }
-    }
-    break;
-  default:
-    /* Bogus */
-    ereport(ERROR,(errmsg_internal("Unknown value for transaction type. Should be 'I','U', or 'D' for Insert, Update or Delete.")));
-  }
+Datum get_xaction_mask(PG_FUNCTION_ARGS){
+    int64 giveback;
+    bruce_spi_start("get_xaction_mask");
+    giveback=get_xaction_mask_private();
+    bruce_spi_finish();
+    PG_RETURN_INT64(giveback);
+}
 
-  ereport(DEBUG1,(errmsg_internal("query:%s",query)));
-  plan=SPI_prepare(query,bindParms,plan_types);
-  queryResult=SPI_execp(plan,plan_values,NULL,0);
-  if (queryResult<0) {
-    ereport(ERROR,(errmsg_internal("SPI_execp() failed")));
-  }
-  if (SPI_processed!=1) {
-    ereport(ERROR,(errmsg_internal("%d rows updated, deleted, or inserted. Expected one and only one row.",
-				   SPI_processed)));
-  }
-  SPI_finish();
-  return BoolGetDatum(success);
+static int64 get_xaction_highbits_private(){
+    int64 mask, xaction, ret ;
+    mask = get_xaction_private();
+    xaction = get_xaction_mask_private();
+    ret= mask & xaction;
+    return ret;
+    //return get_xaction_private() & get_xaction_mask_private();//compiles to same?
+}
+
+Datum get_xaction_highbits(PG_FUNCTION_ARGS){
+    int64 giveback;
+    bruce_spi_start("get_xaction_highbits");
+    giveback=get_xaction_highbits_private();
+    bruce_spi_finish();
+    PG_RETURN_INT64(giveback);
 }
 
 /* Log the current transaction state in the snapshot log */
 Datum logSnapshot(PG_FUNCTION_ARGS) {
-  Datum ox; /* Outstanding Transaction list, comma separated 1,2 */
-  int xcnt;
-  char query[1024];
-  Oid plan_types[4];
-  Datum plan_values[4];
-  void *plan;
+    Datum ox; /* Outstanding Transaction list, comma separated 1,2 */
+    int xcnt;
+    char query[1024];
+    Oid plan_types[4];
+    Datum plan_values[4];
+    void *plan;
 
-  /* Make sure we only snapshot once per transaction */
-  if (!TransactionIdEquals(currentXid,GetTopTransactionId())) {
-    
+    /* Make sure we only snapshot once per transaction */
+    if (TransactionIdEquals(currentXid,GetTopTransactionId())) {
+        return PointerGetDatum(NULL);
+    }
     currentXid=GetTopTransactionId();
-
-    if (SerializableSnapshot == NULL) 
-      ereport(ERROR,(errmsg_internal("SerializableSnapshot is NULL in logSnapshot()")));
-
+    if (SerializableSnapshot == NULL) {
+        ereport(ERROR,(errmsg_internal("SerializableSnapshot is NULL in logSnapshot()")));
+    }
     /* Connect to the Server Programming Interface */
-    if (SPI_connect()<0)
-      ereport(ERROR,(errmsg_internal("SPI_connect failed in logSnapshot()")));
+    bruce_spi_start("logSnapshot");
     
     ox=DirectFunctionCall1(textin,PointerGetDatum(""));
-    
     /* Build a comma separated list of outstanding transaction as a text datum */
     for (xcnt=0;xcnt<SerializableSnapshot->xcnt;xcnt++) {
-      /* If not the first transation in the list, add the field seporator */
-      if (xcnt!=0) 
-	ox=DirectFunctionCall2(textcat,
-			       ox,
-			       DirectFunctionCall1(textin,PointerGetDatum(",")));
-      ox=DirectFunctionCall2(textcat,
-			     ox,
-			     DirectFunctionCall1(textin,DirectFunctionCall1(xidout,SerializableSnapshot->xip[xcnt])));
+        /* If not the first transation in the list, add the field seporator */
+        if (xcnt!=0) {
+            ox=DirectFunctionCall2(textcat, ox, DirectFunctionCall1(textin,PointerGetDatum(",")));
+            ox=DirectFunctionCall2(textcat, ox, DirectFunctionCall1(textin,
+                        DirectFunctionCall1(xidout,SerializableSnapshot->xip[xcnt])));
+        }
     }
-    
     /* build out the insert statement */
     sprintf(query,
 	    "insert into bruce.snapshotlog_%s (current_xaction,min_xaction,max_xaction,outstanding_xactions) values ($1,$2,$3,$4);",
-	    currentLogID());
+	    getCurrentLogId(NULL));
     
     plan_types[0]=INT8OID;
     plan_values[0]=DirectFunctionCall1(int8in,DirectFunctionCall1(xidout,TransactionIdGetDatum(currentXid)));
@@ -1238,288 +985,318 @@ Datum logSnapshot(PG_FUNCTION_ARGS) {
     
     plan=SPI_prepare(query,4,plan_types);
     SPI_execp(plan,plan_values,NULL,0);
-    SPI_finish();
-  }
-  return PointerGetDatum(NULL);
+    bruce_spi_finish();
+    return PointerGetDatum(NULL);
 }
 
 /* Called as a trigger from most tables */
 Datum logTransactionTrigger(PG_FUNCTION_ARGS) {
-  TriggerData *td;
-  char cmd_type[2];
-  Datum row_data;
-  
-  /* Make sure we got called as a trigger */
-  if (!CALLED_AS_TRIGGER(fcinfo))
-    ereport(ERROR,(errmsg_internal("logTransaction() not called as trigger")));
-  
-  /* Get the trigger context */
-  td = (TriggerData *) (fcinfo->context);
+    TriggerData *td;
+    char cmd_type[2];
+    Datum row_data;
 
-  /* Make sure we got fired AFTER and for EACH ROW */
-  if (!TRIGGER_FIRED_AFTER(td->tg_event))
-    ereport(ERROR,(errmsg_internal("logTransaction() must be fired as an AFTER trigger")));
-  if (!TRIGGER_FIRED_FOR_ROW(td->tg_event))
-    ereport(ERROR,(errmsg_internal("logTransaction() must be fired as a FOR EACH ROW trigger")));
-    
-  /* Determine command type */
-  if (TRIGGER_FIRED_BY_INSERT(td->tg_event)) cmd_type[0] = 'I';
-  if (TRIGGER_FIRED_BY_UPDATE(td->tg_event)) cmd_type[0] = 'U';
-  if (TRIGGER_FIRED_BY_DELETE(td->tg_event)) cmd_type[0] = 'D';
-  cmd_type[1]='\0';
-  
+    if (!CALLED_AS_TRIGGER(fcinfo)){
+        ereport(ERROR,(errmsg_internal("logTransaction() not called as trigger")));
+    }
+    td = (TriggerData *) (fcinfo->context);
 
-  /* Connect to the Server Programming Interface */
-  if (SPI_connect()<0)
-    ereport(ERROR,(errmsg_internal("SPI_connect failed in logTransaction()")));
+    if (!TRIGGER_FIRED_AFTER(td->tg_event)){
+        ereport(ERROR,(errmsg_internal("logTransaction() must be fired as an AFTER trigger")));
+    }
+    if (!TRIGGER_FIRED_FOR_ROW(td->tg_event)){
+        ereport(ERROR,(errmsg_internal("logTransaction() must be fired as a FOR EACH ROW trigger")));
+    }
 
-  row_data=serializeRow(td->tg_newtuple,td->tg_trigtuple,td->tg_relation->rd_att);
+    if (TRIGGER_FIRED_BY_INSERT(td->tg_event)) {
+        cmd_type[0] = 'I';
+    }else if (TRIGGER_FIRED_BY_UPDATE(td->tg_event)) {
+        cmd_type[0] = 'U';
+    }else if (TRIGGER_FIRED_BY_DELETE(td->tg_event)) {
+        cmd_type[0] = 'D';
+    }else{
+        ereport(ERROR,(errmsg_internal("logTransaction() must be from insert,update, or delete.")));
+    }
+    cmd_type[1]='\0';
 
-  insertTransactionLog(cmd_type,SPI_getnspname(td->tg_relation),SPI_getrelname(td->tg_relation),row_data);
-
-  SPI_finish();
-  return PointerGetDatum(NULL);
+    bruce_spi_start("logTransactionTrigger");
+    row_data=serializeRow(td->tg_newtuple,td->tg_trigtuple,td->tg_relation->rd_att);
+    insertTransactionLog(
+        cmd_type,
+        SPI_getnspname(td->tg_relation),
+        SPI_getrelname(td->tg_relation),
+        row_data);
+    bruce_spi_finish();
+    return PointerGetDatum(NULL);
 }
 
-/* Deny updates within denyAccessTrigger() */
+/* being in normal mode causes us to deny updates within denyAccessTrigger() */
 Datum normalMode(PG_FUNCTION_ARGS) {
-  replication_mode=MODE_NORMAL;
-  return PointerGetDatum(NULL);
+    replication_mode=MODE_NORMAL;
+    return PointerGetDatum(NULL);
 }
 
 /* Permit the daemon to perform table updates, when underlying table has denyAccessTriger() */
 Datum daemonMode(PG_FUNCTION_ARGS) {
-  replication_mode=MODE_DAEMON;
-  init_cache();
-  return PointerGetDatum(NULL);
+    replication_mode=MODE_DAEMON;
+    init_cache();
+    return PointerGetDatum(NULL);
 }
 
 /* Prevent access to tables under replication on slave nodes */
 Datum denyAccessTrigger(PG_FUNCTION_ARGS) {
-  TriggerData *tg;
-  int rc;
+    TriggerData *tg;
 
-  /* Make sure called as trigger, then get the trigger context */
-  if (!CALLED_AS_TRIGGER(fcinfo))
-    ereport(ERROR,(errmsg_internal("denyAccessTrigger() not called as trigger")));
-  tg=(TriggerData *) (fcinfo->context);
+    if (!CALLED_AS_TRIGGER(fcinfo)){
+        ereport(ERROR,(errmsg_internal("denyAccessTrigger() not called as trigger")));
+    }
+    tg=(TriggerData *) (fcinfo->context);
 
-  /* Check all denyAccessTrigger() calling requirments */
-  if (!TRIGGER_FIRED_BEFORE(tg->tg_event)) 
-    ereport(ERROR,(errmsg_internal("denyAccessTrigger() must be fired BEFORE")));
-  if (!TRIGGER_FIRED_FOR_ROW(tg->tg_event)) 
-    ereport(ERROR,(errmsg_internal("denyAccessTrigger() must be fired FOR EACH ROW")));
-
-  /* Connect to the Server Programing Interface */
-  if ((rc=SPI_connect())<0)
-    ereport(ERROR,(errmsg_internal("denyAccessTrigger(): Unable to connect to SPI")));
-
-  if ((replication_mode==MODE_NORMAL) || (replication_mode==MODE_UNSET)) {
-    /* We are on a slave, attempting to update a replicated table. Bad move. */
-    replication_mode=MODE_NORMAL;
-    ereport(ERROR,(errmsg_internal("denyAccessTrigger(): Table %s is replicated, and should not be modified on a slave node.",
-				   NameStr(tg->tg_relation->rd_rel->relname))));
-    /* Unreachable */
-  }
-
-  /* This is for the case where we are on a slave node, applying transactions (we are the replication thread) */
-  SPI_finish();
-  if (TRIGGER_FIRED_BY_UPDATE(tg->tg_event))
-    return PointerGetDatum(tg->tg_newtuple);
-  else
+    if (!TRIGGER_FIRED_BEFORE(tg->tg_event)){
+        ereport(ERROR,(errmsg_internal("denyAccessTrigger() must be fired BEFORE")));
+    }
+    if (!TRIGGER_FIRED_FOR_ROW(tg->tg_event)) {
+        ereport(ERROR,(errmsg_internal("denyAccessTrigger() must be fired FOR EACH ROW")));
+    }
+    if (replication_mode!=MODE_DAEMON) {
+        /* We are on a slave, attempting to update a replicated table. Bad move. */
+        replication_mode=MODE_NORMAL;
+        ereport(ERROR,(errmsg_internal(
+            "denyAccessTrigger(): Table %s is a replicated slave table, and should not be modified.",
+            NameStr(tg->tg_relation->rd_rel->relname))));
+    }
+    /* This is for the case where we are on a slave node, applying transactions 
+     * (ie; we are the replication thread) 
+     **/ 
+    if (TRIGGER_FIRED_BY_UPDATE(tg->tg_event)){
+        return PointerGetDatum(tg->tg_newtuple);
+    } 
     return PointerGetDatum(tg->tg_trigtuple);
 }
 
 Datum serializeRow(HeapTuple new_row,HeapTuple old_row,TupleDesc desc) {
-  Datum retD;
-  int cCol;
-  
-  retD=DirectFunctionCall1(textin,PointerGetDatum(""));
+    Datum retD;
+    int cCol;
 
-  for (cCol=1;cCol<=desc->natts;cCol++) {
-    char *oldCC=NULL;
-    char *newCC=NULL;
-    if (desc->attrs[cCol-1]->attisdropped) continue;
-    if (old_row!=NULL) {
-      oldCC=SPI_getvalue(old_row,desc,cCol);
+    retD=DirectFunctionCall1(textin,PointerGetDatum(""));
+
+    for (cCol=1;cCol<=desc->natts;cCol++) {
+        char *oldCC=NULL;
+        char *newCC=NULL;
+        if (desc->attrs[cCol-1]->attisdropped) {
+            continue;
+        }
+        if (old_row!=NULL) {
+            oldCC=SPI_getvalue(old_row,desc,cCol);
+        }
+        if (new_row!=NULL) {
+            newCC=SPI_getvalue(new_row,desc,cCol);
+        }
+        retD=DirectFunctionCall2(textcat,
+                retD,
+                serializeCol(SPI_fname(desc,cCol),
+                SPI_gettype(desc,cCol),
+                oldCC,
+                newCC));
+        /* Not last col */
+        if (cCol<desc->natts) {
+            retD=DirectFunctionCall2(textcat,
+                    retD,
+                    DirectFunctionCall1(textin,PointerGetDatum(colSep)));
+        }
     }
-    if (new_row!=NULL) {
-      newCC=SPI_getvalue(new_row,desc,cCol);
-    }
-    retD=DirectFunctionCall2(textcat,
-			     retD,
-			     serializeCol(SPI_fname(desc,cCol),
-					  SPI_gettype(desc,cCol),
-					  oldCC,
-					  newCC));
-    /* Not last col */
-    if (cCol<desc->natts) 
-      retD=DirectFunctionCall2(textcat,
-			       retD,
-			       DirectFunctionCall1(textin,PointerGetDatum(colSep)));
-  }
-  return retD;
+    return retD;
 }
 
 /* Serialize a single collum */
 Datum serializeCol(char *name,char *type,char *old,char *new) {
-  Datum retD;
-
-  retD=DirectFunctionCall1(textin,PointerGetDatum(name));
-  retD=DirectFunctionCall2(textcat,
-			   retD,
-			   DirectFunctionCall1(textin,PointerGetDatum(fieldSep)));
-  retD=DirectFunctionCall2(textcat,
-			   retD,
-			   DirectFunctionCall1(textin,PointerGetDatum(type)));
-  retD=DirectFunctionCall2(textcat,
-			   retD,
-			   DirectFunctionCall1(textin,PointerGetDatum(fieldSep)));
-  if (old==NULL) {
+    Datum retD;
+    retD=DirectFunctionCall1(textin,PointerGetDatum(name));
     retD=DirectFunctionCall2(textcat,
-			     retD,
-			     DirectFunctionCall1(textin,PointerGetDatum(fieldNull)));
-  } else {
+            retD,
+            DirectFunctionCall1(textin,PointerGetDatum(fieldSep)));
     retD=DirectFunctionCall2(textcat,
-			     retD,
-			     DirectFunctionCall2(binary_encode,
-						 DirectFunctionCall1(textin,CStringGetDatum(old)),
-						 DirectFunctionCall1(textin,PointerGetDatum("base64"))));
-  }
-  retD=DirectFunctionCall2(textcat,
-			   retD,
-			   DirectFunctionCall1(textin,PointerGetDatum(fieldSep)));
-  if (new==NULL) {
+            retD,
+            DirectFunctionCall1(textin,PointerGetDatum(type)));
     retD=DirectFunctionCall2(textcat,
-			     retD,
-			     DirectFunctionCall1(textin,PointerGetDatum(fieldNull)));
-  } else {
+            retD,
+            DirectFunctionCall1(textin,PointerGetDatum(fieldSep)));
+    if (old==NULL) {
+        retD=DirectFunctionCall2(textcat,
+                retD,
+                DirectFunctionCall1(textin,PointerGetDatum(fieldNull)));
+    } else {
+        retD=DirectFunctionCall2(textcat,
+                retD,
+                DirectFunctionCall2(binary_encode,
+                DirectFunctionCall1(textin,CStringGetDatum(old)),
+                DirectFunctionCall1(textin,PointerGetDatum("base64"))));
+    }
     retD=DirectFunctionCall2(textcat,
-			     retD,
-			     DirectFunctionCall2(binary_encode,
-						 DirectFunctionCall1(textin,CStringGetDatum(new)),
-						 DirectFunctionCall1(textin,PointerGetDatum("base64"))));
-  }
-  return retD;
+            retD,
+            DirectFunctionCall1(textin,PointerGetDatum(fieldSep)));
+    if (new==NULL) {
+        retD=DirectFunctionCall2(textcat,
+                retD,
+                DirectFunctionCall1(textin,PointerGetDatum(fieldNull)));
+    } else {
+        retD=DirectFunctionCall2(textcat,
+                retD,
+                DirectFunctionCall2(binary_encode,
+                DirectFunctionCall1(textin,CStringGetDatum(new)),
+                DirectFunctionCall1(textin,PointerGetDatum("base64"))));
+    }
+    return retD;
 }
 
-/* Determine the current log id. Safe to presume we are SPI connected */
-char *currentLogID() {
-  SPI_exec("select max(id) from bruce.currentlog",1);
-  if (SPI_processed!=1) 
-    ereport(ERROR,(errmsg_internal("Unable to determine current transaction/snapshot log id in currentLogID()")));
-  return(SPI_getvalue(SPI_tuptable->vals[0],SPI_tuptable->tupdesc,1));
+
+
+static int bruce_spi_exec( 
+    const char *query, 
+    const char *err, 
+    int maxrows, 
+    int minresults,
+    int desired_result 
+    ){
+
+    int exec_ret = SPI_exec(query,maxrows);
+    if (
+        exec_ret != desired_result ||
+        (minresults && SPI_processed < 1 )      ||
+        (maxrows && SPI_processed > maxrows )   ||
+        (minresults && (
+            SPI_tuptable == NULL || 
+            SPI_tuptable->vals == NULL ||
+            SPI_tuptable->vals[0] == NULL
+            )
+        )
+    ){
+        ereport(ERROR,(errmsg_internal( "got result code %i wanted result code %i, (see postgresql-8.*.*/src/include/executor/spi.h for result code definitions, errors are negative) SPI_processed=%i query=%s message=%s", 
+            exec_ret, desired_result, SPI_processed, query, err )));
+    }
+    return SPI_processed;
+}
+
+static int bruce_spi_select( const char *query, const char *err, int maxrows, int minresults ){
+    return bruce_spi_exec( query, err, maxrows, minresults, SPI_OK_SELECT );
+}
+
+//static int bruce_spi_update( const char *query, const char *err, int maxrows, int minresults ){
+//    return bruce_spi_exec( query, err, maxrows, minresults, SPI_OK_UPDATE );
+//}
+
+//static int bruce_spi_insert( const char *query, const char *err, int maxrows, int minresults ){
+//    return bruce_spi_exec( query, err, maxrows, minresults, SPI_OK_INSERT );
+//}
+
+static char *get_first_row_first_column_str(void){
+    return SPI_getvalue(SPI_tuptable->vals[0],SPI_tuptable->tupdesc,1);
+}
+
+Datum get_first_row_first_column_datum(){
+    bool isnull;
+    return SPI_getbinval(SPI_tuptable->vals[0],SPI_tuptable->tupdesc,1,&isnull);
+}
+
+
+/* Determine the current log id. Safe to presume we are SPI connected. 
+ */
+
+static char *getCurrentLogId(int *pdidChange ) {
+    int64 highbitsNow = get_xaction_highbits_private();
+    if( currentLogId != NULL && xactionHighBits == highbitsNow ){
+        if(pdidChange != NULL ){
+            *pdidChange = 0;
+        }
+        return currentLogId;
+    }
+    bruce_spi_select(
+        "select bruce.get_rotate_id()",
+        "could not rotate or retrieve new rotated id!",
+        1,1
+    );
+    currentLogId = bruce_copy_string(get_first_row_first_column_str());
+    xactionHighBits = highbitsNow;
+    if(pdidChange != NULL ){
+        *pdidChange = 1;
+    }
+    return currentLogId;
+}
+
+Datum get_current_log(PG_FUNCTION_ARGS){
+    char *giveback;
+    bruce_spi_start("get_current_log");
+    giveback = getCurrentLogId(NULL);
+    bruce_spi_finish();
+    PG_RETURN_CSTRING(giveback);
 }
 
 /* Return a 'c' string from a presumed text Datum */
 char *Datum2CString(Datum d) {
-  return DatumGetCString(DirectFunctionCall1(textout,d));
-}
-
-/* Return a 'c' string from a presumed non-text Datum */
-/* Borowed from postgresql source at src/backend/executed/spi.c:SPI_getvalue() */
-char *ConvertDatum2CString(Oid type,Datum d,bool isnull) {
-  Oid foutoid;
-  bool typisvarlena;
-  Datum val;
-  Datum retval;
-
-  /* Easy case. Null datum. Null string. */
-  if (isnull) {
-    return NULL;
-  }
-
-  getTypeOutputInfo(type,&foutoid,&typisvarlena);
-  
-  /* Detoast if we are toasty */
-  if (typisvarlena) 
-    val = PointerGetDatum(PG_DETOAST_DATUM(d));
-  else
-    val = d;
-
-  retval = OidFunctionCall1(foutoid,val);
-  
-  /* clean up detoasted copy if we were toasty */
-  if (val != d) pfree(DatumGetPointer(val));
-
-  return DatumGetCString(retval);
-}
-
-/* Convert a serialized collum (see SerializeRow) back into normal form */
-/* As you can see in SerializeRow(), there are a few special cases, like "!" meaning "null" */
-char *deB64(char *s,bool *isnull) {
-  *isnull = failure; /* default is 'is not null' */
-  if ((s==NULL) || (strcmp(s,"")==0)) {
-    return ("");
-  }
-  if (strcmp(s,fieldNull)==0) {
-    *isnull = success;
-    return("");
-  }
-  return decode_base64(s);
+    return DatumGetCString(DirectFunctionCall1(textout,d));
 }
 
 /* Insert an entry into the transaction log. Safe to assume we are SPI_Connect()ed */
 void insertTransactionLog(char *cmd_type,char *schema,char *table,Datum row_data) {
-  char query[1024];
-  Oid plan_types[2];
-  Datum plan_values[2];
-  void *plan;
+    int didChange =0;
+    char buf[STACK_STRING_SIZE];
+    Oid plan_types[4];
+    Datum plan_values[4];
+    char *table_id;
+    void *plan;
 
-  sprintf(query,
-	  "insert into bruce.transactionlog_%s (xaction,cmdtype,tabname,info) values ($1,'%s','%s.%s',$2);",
-	  currentLogID(),
-	  cmd_type,
-	  schema,
-	  table);
-  
-  plan_types[0]=INT8OID;
-  plan_values[0]=DirectFunctionCall1(int8in,DirectFunctionCall1(xidout,GetTopTransactionId()));
-  plan_types[1]=TEXTOID;
-  plan_values[1]=row_data;
-  
-  plan=SPI_prepare(query,2,plan_types);
-  SPI_execp(plan,plan_values,NULL,0);
+    table_id = getCurrentLogId(&didChange);
+    if(didChange == 1 ){
+
+        snprintf(buf, STACK_STRING_SIZE-1,
+            "insert into bruce.transactionlog_%s(xaction,cmdtype,tabname,info)values($1,$2,$3,$4);",
+            table_id
+        );
+        plan_types[0]=INT8OID;
+        plan_types[1]=CHAROID;
+        plan_types[2]=TEXTOID;
+        plan_types[3]=TEXTOID;
+        plan = SPI_prepare(buf,4,plan_types);
+        if( plan == NULL ){
+            ereport(ERROR,(errmsg_internal(
+                "could not prepare tranactionlog insert plan: cmd=%s, %s.%s,SPI_result=%i logid=%s",
+                cmd_type,schema,table,SPI_result,table_id
+            )));
+        }
+        insertTransactionLogPlan=SPI_saveplan(plan);
+        if(insertTransactionLogPlan==NULL){
+            ereport(ERROR,(errmsg_internal(
+                "could not save tranactionlog insert plan: cmd=%s, %s.%s,SPI_result=%i logid=%s",
+                cmd_type,schema,table,SPI_result,table_id
+            )));
+        }
+    }
+    plan_values[0]=DirectFunctionCall1(int8in,DirectFunctionCall1(xidout,GetTopTransactionId()));
+    plan_values[1]=DirectFunctionCall1(charin,CStringGetDatum(cmd_type));
+
+    strncpy(buf,schema,STACK_STRING_SIZE-2);
+    strncat(buf,".",1);
+    strncat(buf,table,STACK_STRING_SIZE-strlen(schema)-2);
+    plan_values[2]=DirectFunctionCall1(textin,CStringGetDatum(buf));
+
+    plan_values[3]=row_data;
+
+    SPI_execp(insertTransactionLogPlan,plan_values,NULL,0);
 }
 
 /* Given a type name, obtain the types OID. Safe to assume we are SPI_Connect()ed */
-Oid getTypeOid(char *typeName) {
-  char query[1024];
-  Oid retVal;
-
-  retVal=(Oid) NULL;
-
-  sprintf(query,
-	  "select oid from pg_type where typname = '%s'",
-	  typeName);
-
-  SPI_exec(query,1);
-
-  if (SPI_processed == 1) { 
+static Oid getTypeOid(char *typeName) {
+    char query[1024];
     char *oidS;
     Datum newOidD;
 
-    oidS=SPI_getvalue(SPI_tuptable->vals[0],SPI_tuptable->tupdesc,1);
-    newOidD=DirectFunctionCall1(oidin,CStringGetDatum(oidS));
-    retVal=DatumGetObjectId(DirectFunctionCall1(oidin,CStringGetDatum(oidS)));
-  } else {
-    ereport(ERROR,(errmsg_internal("Type %s does not exist",typeName)));
-  }
-
-  return(retVal);
-}
-
-/* Given a list of unique columns, determine if a column name is in the list */
-/* An empty list should be treated as a list with all column names in it */
-bool colInUnique(char **uCols,int uColsCount,char *colName) {
-  int i;
-  if (uColsCount==0) {
-    return (1==1);
-  }
-  for (i=0;i<uColsCount;i++) {
-    if (strcmp(uCols[i],colName)==0) {
-      return (1==1);
+    sprintf(query, "select oid from pg_type where typname = '%s'", typeName);
+    SPI_exec(query,1);
+    if (SPI_processed != 1) { 
+        ereport(ERROR,(errmsg_internal("Type %s does not exist",typeName)));
     }
-  }
-  return (1==0);
+    oidS=SPI_getvalue(SPI_tuptable->vals[0],SPI_tuptable->tupdesc,1);
+    //TODO: hmmm, this statement setting newOidD looks unnecessary
+    newOidD=DirectFunctionCall1(oidin,CStringGetDatum(oidS));
+    return DatumGetObjectId(DirectFunctionCall1(oidin,CStringGetDatum(oidS)));
 }
+

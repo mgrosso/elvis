@@ -43,7 +43,8 @@ fi
 
 #see parse_topology() below
 if [ -z $TOPOLOGY ] ; then 
-    TOPOLOGY=0,1,3,4:1,2:2,5
+    #TOPOLOGY=0,1,3,4:1,2:2,5
+    TOPOLOGY=0,1
 fi
 ALL_CLUSTERS=$( echo $TOPOLOGY|tr ':' ' ' )
 ALL_NODE_NUMBERS=$(  echo $TOPOLOGY|tr ':,' '  ' | xargs -n 1 echo | sort -u )
@@ -94,7 +95,7 @@ if [ -z $PGVER ] ; then
         PGVER=83
     else 
         psql --version | grep -q "8\.1\."
-        if [ $? -ne 0 ] ;then 
+        if [ $? -eq 0 ] ;then 
             PGVER=81
             LOG_DESTINATION="redirect_stderr = on"
         else
@@ -253,13 +254,18 @@ function makedb (){
     do_or_puke mkdir -p $PG_DATA
     do_or_puke initdb -E utf8 -U $TESTUSER -D $PG_DATA
     edit_postgresql_conf
-    pg_ctl -D $PG_DATA start >$LOGS/pg.${DIGIT}.out 2>&1
+    startdb $1
+    do_or_puke createdb -E utf8 $UHP -O $TESTUSER $DB
+    make_schema
+}
+
+function startdb (){
+    set_uhp $1
+    nohup pg_ctl -D $PG_DATA start >$LOGS/pg.${DIGIT}.out 2>&1
     if [ $? -ne 0 ] ; then
         puke "could not start db with this command: pg_ctl -D $PG_DATA start >$LOGS/pg.${DIGIT}.out 2>&1 "
     fi
     waitfordb
-    do_or_puke createdb -E utf8 $UHP -O $TESTUSER $DB
-    make_schema
 }
 
 function run_sql (){
@@ -306,7 +312,7 @@ function distribute_snapshot(){
     parse_topology $1
     set_uhp $MASTER_NODE
     $RUNPSQL "select bruce.logsnapshot();" || puke "psql failed "
-    psql -q -t $UHP -d $DB -c "select 'insert into bruce.slavesnapshotstatus (clusterid,slave_xaction,master_current_xaction,master_min_xaction,master_max_xaction,master_outstanding_xactions) values ($MASTER_NODE ,0,' || current_xaction || ',' || min_xaction || ',' || max_xaction || ',' || ' \\'' || outstanding_xactions || ' \\'' || ');' from bruce.snapshotlog_1 order by current_xaction limit 1;" \
+    psql -q -t $UHP -d $DB -c "select 'insert into bruce.slavesnapshotstatus (clusterid,slave_xaction,master_current_xaction,master_min_xaction,master_max_xaction,master_outstanding_xactions) values ($MASTER_NODE ,0,' || current_xaction || ',' || min_xaction || ',' || max_xaction || ',' || ' \\'' || outstanding_xactions || ' \\'' || ');' from bruce.snapshotlog order by current_xaction limit 1;" \
         -o slavesnapshot.sql   || puke "psql $UHP failed to create snapshot sql"
     for N in $SLAVE_NODES ; do
         set_uhp $N
@@ -417,6 +423,7 @@ function _stop (){
 }
 
 function _init (){
+    _stop
     maketop
     foreach_node makedb
     foreach_cluster setup_cluster
@@ -427,6 +434,14 @@ function _start(){
     foreach_cluster distribute_snapshot
     foreach_cluster start_replication
     check_heartbeat
+}
+
+function _startdb(){
+    foreach_node startdb
+}
+
+function _startelvis(){
+    foreach_cluster start_replication
 }
 
 function _sync(){
@@ -445,7 +460,6 @@ function _vacuum_heartbeat (){
 }
 
 function _fulltest (){
-    _stop
     _init
     _start
     _benchmark
@@ -460,7 +474,9 @@ $0 : the usage is explained pretty well by the code snippet below.
 case $ARG in 
      stop) _stop ;;     #stop all postgres and replication daemons
      init) _init ;;     #initialize databases and setup replication
-     start) _start ;;   #start databases and replication daemons
+     start) _start ;;   #install snapshot tables and start replication
+     startdb) _startdb ;;   #start each postgres
+     startelvis) _startelvis ;;   #start each replication daemon
      benchmark) _benchmark ;;   #run the pg_bench benchmark.
      fulltest) _fulltest ;;     #same as doing stop,init,start,benchmark,stop
      sync) _sync $2 ;;  #inserts a row with id of arg and waits for it to replicate
@@ -501,7 +517,9 @@ HELP
 case $ARG in 
      stop) _stop ;;     #stop all postgres and replication daemons
      init) _init ;;     #initialize databases and setup replication
-     start) _start ;;   #start databases and replication daemons
+     start) _start ;;   #initialize databases and replication daemons and start them
+     startdb) _startdb ;;   #start databases 
+     startelvis) _startelvis ;;   #start replication daemons 
      benchmark) _benchmark ;;   #run the pg_bench benchmark.
      fulltest) _fulltest ;;     #same as doing stop,init,start,benchmark,stop
      sync) _sync $2 ;;  #inserts a row with id of arg and waits for it to replicate
