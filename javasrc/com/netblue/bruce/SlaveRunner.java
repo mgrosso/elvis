@@ -27,6 +27,7 @@ import com.netblue.bruce.cluster.Node;
 import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
 
+import java.text.MessageFormat;
 import java.util.Properties;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -81,10 +82,6 @@ public class SlaveRunner extends DaemonThread {
                 SLAVE_UPDATE_TRANSACTION_ID_8_3_HIGHER_KEY, SLAVE_UPDATE_TRANSACTION_ID_8_3_HIGHER_DEFAULT);
         applyTransactionsQuery = properties.getProperty(
             APPLY_TRANSACTION_KEY, APPLY_TRANSACTION_DEFAULT);
-        daemonModeQuery = properties.getProperty(
-            DAEMONMODE_QUERY_ID_KEY, DAEMONMODE_QUERY_ID_DEFAULT);
-        normalModeQuery = properties.getProperty(
-            NORMALMODE_QUERY_ID_KEY, NORMALMODE_QUERY_ID_DEFAULT);
         slaveTableIDQuery = properties.getProperty(
             SLAVE_TABLE_ID_KEY,SLAVE_TABLE_ID_DEFAULT);
         transactionLogFetchSize  = properties.getIntProperty( 
@@ -93,10 +90,25 @@ public class SlaveRunner extends DaemonThread {
             INLIST_SIZE_KEY, INLIST_SIZE_DEFAULT );
         plusNSnapshotQuery = properties.getProperty( 
             PLUSN_SNAPSHOT_QUERY_KEY, PLUSN_SNAPSHOT_QUERY_DEFAULT);
-        getOutstandingTransactionsQuery = properties.getProperty(
-            GET_OUTSTANDING_TRANSACTIONS_KEY,GET_OUTSTANDING_TRANSACTIONS_DEFAULT);
         postgresVersionQuery = properties.getProperty(
             POSTGRES_VERSION_QUERY_KEY, POSTGRES_VERSION_QUERY_DEFAULT);
+
+        createOutstandingTransactionsTmptableQuery = properties.getProperty(
+            CREATE_OUTSTANDING_TRANSACTIONS_TMPTABLE_KEY,
+            CREATE_OUTSTANDING_TRANSACTIONS_TMPTABLE_DEFAULT);
+        insertOutstandingTransactionsQuery = properties.getProperty(
+            INSERT_OUTSTANDING_TRANSACTIONS_KEY,
+            INSERT_OUTSTANDING_TRANSACTIONS_DEFAULT);
+        getTransactionsTmptableQuery = properties.getProperty(
+            GET_TRANSACTIONS_TMPTABLE_KEY,
+            GET_TRANSACTIONS_TMPTABLE_DEFAULT);
+        getTransactionsNoOutstandingQuery = properties.getProperty(
+            GET_TRANSACTIONS_NO_OUTSTANDING_KEY,
+            GET_TRANSACTIONS_NO_OUTSTANDING_DEFAULT);
+        getTransactionsInclauseQuery = properties.getProperty(
+            GET_TRANSACTIONS_INCLAUSE_KEY,
+            GET_TRANSACTIONS_INCLAUSE_DEFAULT);
+
         LOGGER.info("Replicating node: " + nodeName + " at " + nodeUri );
         // creates a connection and all of our prepared statements
         initializeDatabaseResources();
@@ -216,7 +228,6 @@ public class SlaveRunner extends DaemonThread {
     private void prepareMasterStatements() throws SQLException {
         masterConnection.setSavepoint() ;
         plusNSnapshotStatement = capture(masterConnection.prepareStatement(plusNSnapshotQuery));
-        getOutstandingTransactionsStatement = capture(masterConnection.prepareStatement(getOutstandingTransactionsQuery));
         masterConnection.commit();
     }
 
@@ -339,41 +350,49 @@ public class SlaveRunner extends DaemonThread {
         //starting with older  in progress xids that are not in newer in progress list.
         SortedSet<TransactionID> outstanding  = new TreeSet<TransactionID> (lastProcessedSnapshot.getInProgressXids());
         outstanding.removeAll( snapshot.getInProgressXids());
+        int outstanding_size = outstanding.size();
 
-        int inlistCount = 0;
-        final String start = "select * from bruce.transactionlog where xaction in ( ";
-        final String end   = ") order by rowid asc";
-        StringBuffer inlistBuf = new StringBuffer(start);
-        for( TransactionID t: outstanding ){
-            //in the common case, this is the same as t >= last.getCurrentXid()
-            //except that there is no >= operator for these.
-            int comp = t.compareTo(lastProcessedSnapshot.getCurrentXid());
-            if( comp >= 0 ){
-                continue;
+        StringBuilder sb = new StringBuilder();
+        while(outstanding.size()>0){
+            if(sb.length()>0){
+                sb.append(',');
             }
-            if( inlistCount > 0 ){
-                inlistBuf.append(",");
-            }
-            inlistBuf.append(t);
-            if( ++inlistCount >= inListSize ){
-                inlistBuf.append(end);
-                applyAllChangesForSQL( inlistBuf.toString(),snapshot);
-                inlistBuf = new StringBuffer(start);
-                inlistCount=0;
-            }
+            TransactionID xid = outstanding.first();
+            outstanding.remove(xid);
+            sb.append(xid);
         }
-        if( inlistCount > 0 ){
-            inlistBuf.append(end);
-            applyAllChangesForSQL( inlistBuf.toString(),snapshot);
-        }
+        String xidlist = sb.toString();
 
+        //start transaction
         masterConnection.setSavepoint();
-        getOutstandingTransactionsStatement.setFetchSize(transactionLogFetchSize);
-        getOutstandingTransactionsStatement.setLong(
-                1,lastProcessedSnapshot.getCurrentXid().getLong());
-        getOutstandingTransactionsStatement.setLong(
-                2,snapshot.getMaxXid().getLong());
-        ResultSet txrs = capture(getOutstandingTransactionsStatement.executeQuery());
+        String getChangesSql;
+
+        if( outstanding_size > inListSize ){
+            //create + populate temp table
+            //then create sql which uses that.
+            PreparedStatement tmptable = capture(masterConnection.prepareStatement(
+                createOutstandingTransactionsTmptableQuery));
+            tmptable.execute();
+            PreparedStatement tmpTableInsert = capture(masterConnection.prepareStatement(
+                insertOutstandingTransactionsQuery));
+            tmpTableInsert.setString(1,xidlist);
+            tmpTableInsert.execute();
+            getChangesSql=getTransactionsTmptableQuery ;
+        }else if(outstanding_size==0){
+            //put the outstanding into a where clause in list.
+            getChangesSql=getTransactionsNoOutstandingQuery ;
+        }else{
+            getChangesSql=MessageFormat.format(getTransactionsInclauseQuery,xidlist);
+        }
+        long lower_bound = lastProcessedSnapshot.getCurrentXid().getLong() ;
+        long upper_bound = snapshot.getCurrentXid().getLong() ;
+        LOGGER.trace("sql: "+getChangesSql+" ?1=lastProcessedSnapshot.getCurrentXid()="+ lower_bound + " ?2=snapshot.getCurrentXid()="+ upper_bound );
+
+        PreparedStatement getOutstanding = capture(masterConnection.prepareStatement(getChangesSql));
+        getOutstanding.setLong( 1,lastProcessedSnapshot.getCurrentXid().getLong());
+        getOutstanding.setLong( 2,snapshot.getMaxXid().getLong());
+        getOutstanding.setFetchSize(transactionLogFetchSize);
+        ResultSet txrs = capture(getOutstanding.executeQuery());
         applyAllChangesForResultSet(txrs,snapshot);
         release(txrs);
         masterConnection.rollback();
@@ -571,7 +590,7 @@ public class SlaveRunner extends DaemonThread {
         release(rs);
         slaveConnection.commit();
     }
-    
+
     // --------- Class fields ---------------- //
     private boolean shutdownRequested = false;
     private BruceProperties properties;
@@ -592,6 +611,13 @@ public class SlaveRunner extends DaemonThread {
     private PreparedStatement plusNSnapshotStatement;
     private PreparedStatement getOutstandingTransactionsStatement;
     private PreparedStatement postgresVersionStatement;
+
+    private String createOutstandingTransactionsTmptableStatement ;
+    private String insertOutstandingTransactionsStatement ;
+    private String getTransactionsTmptableStatement ;
+    private String getTransactionsNoOutstandingStatement ;
+    private String getTransactionsInclauseStatement ;
+
     private HashSet<String> slaveTables ;
 
     private int transactionLogFetchSize;
@@ -604,9 +630,14 @@ public class SlaveRunner extends DaemonThread {
     private String daemonModeQuery;
     private String normalModeQuery;
     private String slaveTableIDQuery;
-    private String getOutstandingTransactionsQuery;
     private String plusNSnapshotQuery;
     private String postgresVersionQuery;
+
+    private String createOutstandingTransactionsTmptableQuery ;
+    private String insertOutstandingTransactionsQuery ;
+    private String getTransactionsTmptableQuery ;
+    private String getTransactionsNoOutstandingQuery ;
+    private String getTransactionsInclauseQuery ;
 
     // --------- Constants ------------------- //
     private String masterUri ;
@@ -617,18 +648,6 @@ public class SlaveRunner extends DaemonThread {
 
     // --------- Static Constants ------------ //
     private static final Logger LOGGER = Logger.getLogger(SlaveRunner.class);
-
-    // Daemon mode for inserting data into the slave's replicated tables
-    private static final String DAEMONMODE_QUERY_ID_KEY = "bruce.daemonmode.query";
-    private static final String DAEMONMODE_QUERY_ID_DEFAULT = "select bruce.daemonmode()";
-
-    // Normal mode to keep replicated tables read only
-    private static final String NORMALMODE_QUERY_ID_KEY = "bruce.normalmode.query";
-    private static final String NORMALMODE_QUERY_ID_DEFAULT = "select bruce.normalmode()";
-
-    // Apply transactions to a slave
-    //private static final String APPLY_TRANSACTION_KEY = "bruce.applytransaction.query";
-    //private static final String APPLY_TRANSACTION_DEFAULT = "select bruce.applyLogTransaction(?, ?, ?)";
 
     // Apply transactions to a slave
     private static final String APPLY_TRANSACTION_KEY = "bruce.applytransaction.query";
@@ -667,30 +686,27 @@ public class SlaveRunner extends DaemonThread {
 	"                                     and pronamespace = (select oid from pg_namespace "+
 	"                                                          where nspname = 'bruce')))";
 
-    // Query to determine the next snapshot, when nextNormalXID < lastNormalXID
-    private static final String NEXT_SNAPSHOT_SIMPLE_KEY = "bruce.slave.nextSnapshotSimple";
-    private static final String NEXT_SNAPSHOT_SIMPLE_DEFAULT =
-	"select * from bruce.snapshotlog "+
-	" where current_xaction not in (?,?,?) "+
-	"   and current_xaction >= ? "+
-	"   and current_xaction <= ? "+
-	" order by current_xaction desc limit 1";
+    private static final String CREATE_OUTSTANDING_TRANSACTIONS_TMPTABLE_KEY =
+        "bruce.slave.create_outstanding_transactions_tmptable";
+    private static final String CREATE_OUTSTANDING_TRANSACTIONS_TMPTABLE_DEFAULT =
+        "create temporary table outstanding_xactions ( xaction bigint );";
+    private static final String INSERT_OUTSTANDING_TRANSACTIONS_KEY =
+        "bruce.slave.insert_outstanding_transactions";
+    private static final String INSERT_OUTSTANDING_TRANSACTIONS_DEFAULT =
+        "select count(*) from (select * from bruce.execute_sql_array('insert into outstanding_xactions(xaction)values(','?',',',')')) as x";
+    private static final String GET_TRANSACTIONS_TMPTABLE_KEY =
+        "bruce.slave.get_transactions_tmptable";
+    private static final String GET_TRANSACTIONS_TMPTABLE_DEFAULT =
+        "select * from bruce.transactionlog where ( xaction >= ? and xaction < ? ) or xaction in (select xaction from outstanding_xactions ) order by rowid asc";
+    private static final String GET_TRANSACTIONS_NO_OUTSTANDING_KEY =
+        "bruce.slave.get_transactions_no_outstanding";
+    private static final String GET_TRANSACTIONS_NO_OUTSTANDING_DEFAULT =
+        "select * from bruce.transactionlog where ( xaction >= ? and xaction < ? ) or xaction in (select xaction from outstanding_xactions ) order by rowid asc";
+    private static final String GET_TRANSACTIONS_INCLAUSE_KEY =
+        "bruce.slave.get_transactions_inclause";
+    private static final String GET_TRANSACTIONS_INCLAUSE_DEFAULT =
+        "select * from bruce.transactionlog where ( xaction >= ? and xaction < ? ) or xaction in ({0}) order by rowid asc";
 
-    // Query to determine the next snapshot, when nextNormalXID > lastNormalXID
-    private static final String NEXT_SNAPSHOT_WRAPAROUND_KEY = 
-	"bruce.slave.nextSnapshotWraparound";
-    private static final String NEXT_SNAPSHOT_WRAPAROUND_DEFAULT =
-	"select * from bruce.snapshotlog "+
-	" where current_xaction not in (?,?,?) "+
-	"   and ((current_xaction >= ? and current_xaction <= ?) "+
-	"     or (current_xaction >= ? and current_xaction <= ?)) "+
-	" order by current_xaction desc limit 1";
-
-    private static final String GET_OUTSTANDING_TRANSACTIONS_KEY =
-	"bruce.slave.getOutstandingTransactions";
-    private static final String GET_OUTSTANDING_TRANSACTIONS_DEFAULT =
-	"select * from bruce.transactionlog where xaction >= ? and xaction < ? order by rowid asc";
-    
     private static final String PLUSN_SNAPSHOT_QUERY_KEY = "bruce.slave.plusNSnapshotQuery" ;
     private static final String PLUSN_SNAPSHOT_QUERY_DEFAULT =
 	"select * from bruce.snapshotlog "+
