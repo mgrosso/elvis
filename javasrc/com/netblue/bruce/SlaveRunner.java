@@ -693,7 +693,7 @@ public class SlaveRunner extends DaemonThread {
     private static final String INSERT_OUTSTANDING_TRANSACTIONS_KEY =
         "bruce.slave.insert_outstanding_transactions";
     private static final String INSERT_OUTSTANDING_TRANSACTIONS_DEFAULT =
-        "select count(*) from (select * from bruce.execute_sql_array('insert into outstanding_xactions(xaction)values(','?',',',')')) as x";
+        "select count(*) from (select * from bruce.execute_sql_array('insert into outstanding_xactions(xaction)values('::text ,(?)::text ,','::text ,')'::text )) as x";
     private static final String GET_TRANSACTIONS_TMPTABLE_KEY =
         "bruce.slave.get_transactions_tmptable";
     private static final String GET_TRANSACTIONS_TMPTABLE_DEFAULT =
