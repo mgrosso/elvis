@@ -701,7 +701,7 @@ public class SlaveRunner extends DaemonThread {
     private static final String GET_TRANSACTIONS_NO_OUTSTANDING_KEY =
         "bruce.slave.get_transactions_no_outstanding";
     private static final String GET_TRANSACTIONS_NO_OUTSTANDING_DEFAULT =
-        "select * from bruce.transactionlog where ( xaction >= ? and xaction < ? ) or xaction in (select xaction from outstanding_xactions ) order by rowid asc";
+        "select * from bruce.transactionlog where ( xaction >= ? and xaction < ? ) order by rowid asc";
     private static final String GET_TRANSACTIONS_INCLAUSE_KEY =
         "bruce.slave.get_transactions_inclause";
     private static final String GET_TRANSACTIONS_INCLAUSE_DEFAULT =
