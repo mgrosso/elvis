@@ -404,7 +404,7 @@ begin
     alter table bruce.slave_snapshot_history add unique ( node_id, clusterid, master_current_xaction );
     select into discard_ * from bruce.make_table_slave('bruce','slave_snapshot_history');
     select into discard_ * from bruce.make_table_master('bruce','slave_snapshot_history');
-    select bruce.make_history_rules(newnode_id_);
+    perform bruce.make_history_rules(newnode_id_);
 end;
 $$ language plpgsql;
 
