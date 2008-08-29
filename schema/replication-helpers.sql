@@ -401,7 +401,7 @@ declare
     discard_ record;
 begin
     create table bruce.slave_snapshot_history as select newnode_id_ as node_id, s.* from bruce.slavesnapshotstatus as s ;
-    create unique index slave_snapshot_history_u1 on bruce.slave_snapshot_history ( node_id, clusterid, master_current_xaction );
+    alter table bruce.slave_snapshot_history add unique ( node_id, clusterid, master_current_xaction );
     select into discard_ * from bruce.make_table_slave('bruce','slave_snapshot_history');
     select into discard_ * from bruce.make_table_master('bruce','slave_snapshot_history');
     select bruce.make_history_rules(newnode_id_);
