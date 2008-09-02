@@ -487,9 +487,9 @@ public class SlaveRunner extends DaemonThread {
      * @return the next Snapshot when it becomes available
      */
     private Snapshot getNextSnapshot() throws SQLException {
-        LOGGER.trace("Getting next snapshot");
         Snapshot retVal = null;
         final Snapshot processedSnapshot = getLastProcessedSnapshot();	
+        LOGGER.trace("Getting next snapshot after: "+processedSnapshot );
         ResultSet rs = null;
         for (long l: snaphot_query_sizes){
             LOGGER.trace("trying lastProcessedSnapshot +"+l);
@@ -515,7 +515,7 @@ public class SlaveRunner extends DaemonThread {
                     retVal=null;
                 }
             } else {
-                LOGGER.trace("No snapshot >= lastProcessedSnapshot +"+l);
+                LOGGER.trace("No snapshot >= lastProcessedSnapshot +"+l+" snapshot="+processedSnapshot+" sql="+plusNSnapshotQuery);
             }
             release(rs);
             masterConnection.rollback();
@@ -689,7 +689,7 @@ public class SlaveRunner extends DaemonThread {
     private static final String CREATE_OUTSTANDING_TRANSACTIONS_TMPTABLE_KEY =
         "bruce.slave.create_outstanding_transactions_tmptable";
     private static final String CREATE_OUTSTANDING_TRANSACTIONS_TMPTABLE_DEFAULT =
-        "create temporary table outstanding_xactions ( xaction bigint );";
+        "create temporary table outstanding_xactions ( xaction bigint unique );";
     private static final String INSERT_OUTSTANDING_TRANSACTIONS_KEY =
         "bruce.slave.insert_outstanding_transactions";
     private static final String INSERT_OUTSTANDING_TRANSACTIONS_DEFAULT =
