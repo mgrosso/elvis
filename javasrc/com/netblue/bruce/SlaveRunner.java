@@ -726,7 +726,7 @@ public class SlaveRunner extends DaemonThread {
     private static int TRANSACTIONLOG_FETCH_SIZE_DEFAULT = 5000;
 
     private static final String INLIST_SIZE_KEY = "bruce.inlistSizeKey";
-    private static int INLIST_SIZE_DEFAULT = 50;
+    private static int INLIST_SIZE_DEFAULT = 700;
 
     private static final long[] snaphot_query_sizes = new long []{2000L, 500L,125L,25L,5L,3L,2L,1L} ;
     private QueryCache queryCache;
