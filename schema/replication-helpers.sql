@@ -32,10 +32,11 @@ $Q$ language sql ;
 
 CREATE OR REPLACE FUNCTION bruce.find_tables_in_schema (
     schem_ text
+    ,out schema_ pg_class.relname%TYPE
     ,out table_  pg_class.relname%TYPE
-) RETURNS SETOF pg_class.relname%TYPE AS $Q$ 
+) RETURNS SETOF RECORD AS $Q$ 
 
-select c.relname as table_
+select n.nspname as schema_, c.relname as table_
 from pg_class c, pg_namespace n
 where c.relnamespace = n.oid 
     and n.nspname = quote_ident($1)
@@ -101,6 +102,18 @@ begin
 end;
 $$ language plpgsql ;
 
+CREATE OR REPLACE FUNCTION bruce.drop_trigger_x ( 
+    schema_ pg_namespace.nspname%TYPE
+    ,table_  pg_class.relname%TYPE
+    ,trigger_  pg_proc.proname%TYPE
+) RETURNS VOID AS $$ 
+begin
+    execute 'drop trigger ' || quote_ident(trigger_) || ' on '
+                || quote_ident(schema_) || '.' || quote_ident(table_) 
+                ;
+end;
+$$ language plpgsql ;
+
 
 
 CREATE OR REPLACE FUNCTION bruce.for_all_with_x_add_y(
@@ -128,7 +141,6 @@ $$ language sql ;
 CREATE OR REPLACE FUNCTION bruce.make_table_x(
     schema_ pg_namespace.nspname%TYPE
     ,table_  pg_class.relname%TYPE
-    ,dedupe_func_  pg_proc.proname%TYPE
     ,new_func_  pg_proc.proname%TYPE
     ,suffix  pg_proc.proname%TYPE
     ,before_after_  pg_proc.proname%TYPE
@@ -137,38 +149,79 @@ CREATE OR REPLACE FUNCTION bruce.make_table_x(
 ) RETURNS RECORD AS $$ 
 begin
     execute
-        'select bruce.add_trigger('
-            || quote_literal(schema_) || ','
-            || quote_literal(table_) || ','
+        'select bruce.add_trigger('||
+            ' schema_, table_, ' 
             || quote_literal(new_func_) || ','
             || quote_literal(suffix) || ','
             || quote_literal(before_after_) || ')'
-        || ' from bruce.find_tables_in_schema(' || quote_literal(schema_) || ')' 
-        || ' where table_ = ' || quote_literal(table_)
-        || ' and table_ not in ('
-            || ' select table_ from bruce.' 
-            || quote_ident(dedupe_func_)
-            || '() where schema_ = ' || quote_literal(schema_) 
-            || ' and table_ = ' || quote_literal(table_) 
-        || ')';
+        || ' from (  '||
+                ' select ' || quote_literal(schema_) || ' as schema_ ,' || quote_literal(table_) || ' as table_ ' ||
+                ' except ' ||
+                ' select schema_,table_ from bruce.find_trigger_tables( '
+            || quote_literal(schema_) || ','
+            || quote_literal(table_) || ','
+            || quote_literal(new_func_) || ')' 
+        || ')' ;
     oschema_ := schema_;
     otable_ := table_;
 end;
 $$ language plpgsql ;
 
+CREATE OR REPLACE FUNCTION bruce.find_trigger_tables(
+    schema_ pg_namespace.nspname%TYPE
+    ,func_  pg_proc.proname%TYPE
+    ,out oschema_ pg_namespace.nspname%TYPE
+    ,out otable_  pg_class.relname%TYPE
+    ,out trigger_ pg_class.relname%TYPE
+) RETURNS RECORD AS $$ 
+select n.nspname as oschema_, c.relname as otable_, t.tgname as trigger_
+from pg_class c, pg_namespace n, pg_trigger t, pg_proc p, pg_namespace nb
+where 
+        c.relnamespace = n.oid and 
+        n.nspname like quote_literal($1) and
+        c.oid = t.tgrelid and
+        t.tgfoid = p.oid and
+        p.proname like quote_literal($2) and
+        p.pronamespace = nb.oid and
+        nb.nspname like 'bruce';
+$$ language sql ;
+
+CREATE OR REPLACE FUNCTION bruce.find_trigger_tables(
+    schema_ pg_namespace.nspname%TYPE
+    ,table_  pg_class.relname%TYPE
+    ,func_  pg_proc.proname%TYPE
+    ,out oschema_ pg_namespace.nspname%TYPE
+    ,out otable_  pg_class.relname%TYPE
+    ,out trigger_ pg_class.relname%TYPE
+) RETURNS RECORD AS $$ 
+select * from bruce.find_trigger_tables($1,$2) where otable_ like quote_literal($2);
+$$ language sql ;
+
+CREATE OR REPLACE FUNCTION bruce.make_table_not_x(
+    schema_ pg_namespace.nspname%TYPE
+    ,table_  pg_class.relname%TYPE
+    ,new_func_  pg_proc.proname%TYPE
+) RETURNS VOID AS $$ 
+select bruce.drop_trigger_x(oschema_,otable_,trigger_) from bruce.find_trigger_tables($1,$2,$3) as t;
+$$ language sql ;
+
+CREATE OR REPLACE FUNCTION bruce.make_schema_not_x(
+    schema_ pg_namespace.nspname%TYPE
+    ,func_  pg_proc.proname%TYPE
+) RETURNS VOID AS $$ 
+select bruce.drop_trigger_x(oschema_,otable_,trigger_) from bruce.find_trigger_tables($1,$2) as t;
+$$ language sql ;
+
 CREATE OR REPLACE FUNCTION bruce.make_schema_x(
     schema_ pg_namespace.nspname%TYPE
-    ,dedupe_func_  pg_proc.proname%TYPE
     ,new_func_  pg_proc.proname%TYPE
     ,suffix_  pg_proc.proname%TYPE
     ,before_after_  pg_proc.proname%TYPE
     ,out oschema_ pg_namespace.nspname%TYPE
     ,out otable_  pg_class.relname%TYPE
 ) RETURNS SETOF RECORD AS $$ 
-select bruce.make_table_x($1,t.table_,$2,$3,$4,$5) from bruce.find_tables_in_schema($1) as t;
+select bruce.make_table_x($1,table_,$2,$3,$4) from bruce.find_tables_in_schema($1) as t;
 $$ language sql ;
-
-
 
 CREATE OR REPLACE FUNCTION bruce.drop_all_trigger_x(
     xfunc_  pg_proc.proname%TYPE
@@ -232,7 +285,7 @@ CREATE OR REPLACE FUNCTION bruce.make_table_slave(
     ,out oschema_ pg_namespace.nspname%TYPE
     ,out otable_  pg_class.relname%TYPE
 ) RETURNS RECORD AS $$ 
-select bruce.make_table_x($1,$2,'get_slave_tables','denyaccesstrigger','_deny','before');
+select bruce.make_table_x($1,$2,'denyaccesstrigger','_deny','before');
 $$ language sql ;
 
 CREATE OR REPLACE FUNCTION bruce.make_table_master(
@@ -241,7 +294,21 @@ CREATE OR REPLACE FUNCTION bruce.make_table_master(
     ,out oschema_ pg_namespace.nspname%TYPE
     ,out otable_  pg_class.relname%TYPE
 ) RETURNS RECORD AS $$ 
-select bruce.make_table_x($1,$2,'get_master_tables','logtransactiontrigger','_tx','after');
+select bruce.make_table_x($1,$2,'logtransactiontrigger','_tx','after');
+$$ language sql ;
+
+CREATE OR REPLACE FUNCTION bruce.make_table_not_slave(
+    schema_ pg_namespace.nspname%TYPE
+    ,table_  pg_class.relname%TYPE
+) RETURNS RECORD AS $$ 
+select bruce.make_table_not_x($1,$2,'denyaccesstrigger' );
+$$ language sql ;
+
+CREATE OR REPLACE FUNCTION bruce.make_table_not_master(
+    schema_ pg_namespace.nspname%TYPE
+    ,table_  pg_class.relname%TYPE
+) RETURNS RECORD AS $$ 
+select bruce.make_table_not_x($1,$2,'logtransactiontrigger' );
 $$ language sql ;
 
 
@@ -253,13 +320,25 @@ $$ language sql ;
 CREATE OR REPLACE FUNCTION bruce.make_schema_slave(
     schema_ pg_namespace.nspname%TYPE
 ) RETURNS SETOF RECORD AS $$ 
-select bruce.make_schema_x($1,'get_slave_tables','denyaccesstrigger','_deny','after');
+select bruce.make_schema_x($1,'denyaccesstrigger','_deny','before');
 $$ language sql ;
 
 CREATE OR REPLACE FUNCTION bruce.make_schema_master(
     schema_ pg_namespace.nspname%TYPE
 ) RETURNS SETOF RECORD AS $$ 
-select bruce.make_schema_x($1,'get_master_tables','logtransactiontrigger','_tx','before');
+select bruce.make_schema_x($1,'logtransactiontrigger','_tx','after');
+$$ language sql ;
+
+CREATE OR REPLACE FUNCTION bruce.make_schema_not_slave(
+    schema_ pg_namespace.nspname%TYPE
+) RETURNS VOID AS $$ 
+select bruce.make_schema_not_x($1,'denyaccesstrigger');
+$$ language sql ;
+
+CREATE OR REPLACE FUNCTION bruce.make_schema_not_master(
+    schema_ pg_namespace.nspname%TYPE
+) RETURNS VOID AS $$ 
+select bruce.make_schema_not_x($1,'logtransactiontrigger');
 $$ language sql ;
 
 
@@ -454,6 +533,34 @@ begin
     execute 'grant ' || priv_ || ' on ' || schema_ || '.' || table_ || ' to ' || to_whom_ ;
 end;
 $$ language plpgsql ;
+
+create or replace function bruce.array_to_set( vals anyarray ) returns setof anyelement as $X$ 
+declare
+    i           int ;
+    len         int ;
+begin
+    i:=1;
+    len := array_upper(vals,1) ;
+    loop
+        if i > len then
+            exit;
+        end if;
+        return next vals[i];
+        i := i+1 ;
+    end loop;
+end;
+$X$ language plpgsql;
+
+create or replace function bruce.execute_sql( statement text ) returns void as $X$
+begin
+    execute statement ;
+end;
+$X$ language plpgsql;
+
+create or replace function bruce.execute_sql_array( preamble text, delimited_values text, delimiter text, suffix text ) returns setof void as $X$ 
+select bruce.execute_sql( $1 || val || $4 ) from bruce.array_to_set(string_to_array($2,$3)) as val ;
+$X$ language sql;
+
 
 
 
