@@ -11,62 +11,88 @@ CREATE TABLE bruce.replication_version
     patch int,
     name character(64)
 );
+INSERT INTO bruce.replication_version ( major,minor,patch,name)values
+    ( 2, 0, 0, 'Elvis 2.0.0' );
 
-CREATE FUNCTION bruce.daemonmode() RETURNS integer
+-- set and drop daemon mode.
+CREATE OR REPLACE FUNCTION bruce.daemonmode() RETURNS integer
         AS 'elvis.so', 'daemonMode' LANGUAGE c;
 
-CREATE FUNCTION bruce.denyaccesstrigger() RETURNS trigger
-        AS 'elvis.so', 'denyAccessTrigger' LANGUAGE c;
-
-CREATE FUNCTION bruce.logsnapshottrigger() RETURNS trigger
-        AS 'elvis.so', 'logSnapshot' LANGUAGE c;
-
-CREATE FUNCTION bruce.logsnapshot() RETURNS boolean
-        AS 'elvis.so', 'logSnapshot' LANGUAGE c;
-
-CREATE FUNCTION bruce.logtransactiontrigger() RETURNS trigger
-        AS 'elvis.so', 'logTransactionTrigger' LANGUAGE c;
-
-CREATE FUNCTION bruce.normalmode() RETURNS integer
+CREATE OR REPLACE FUNCTION bruce.normalmode() RETURNS integer
         AS 'elvis.so', 'normalMode' LANGUAGE c;
 
-CREATE FUNCTION bruce.applylogtransaction2(int, int, text, text, text, text) RETURNS boolean
+
+-- slave denyaccess and logtransaction are the slave and master triggers respectively.
+CREATE OR REPLACE FUNCTION bruce.denyaccesstrigger() RETURNS trigger
+        AS 'elvis.so', 'denyAccessTrigger' LANGUAGE c;
+
+CREATE OR REPLACE FUNCTION bruce.logsnapshottrigger() RETURNS trigger
+        AS 'elvis.so', 'logSnapshot' LANGUAGE c;
+
+
+
+-- logSnapshot function to create a snapshot comes in regular, and trigger version.
+-- regular version is used by daemon.  trigger version is only useful if you want 
+-- every change to a table to generate a snapshot... but you dont want that.
+CREATE OR REPLACE FUNCTION bruce.logsnapshot() RETURNS boolean
+        AS 'elvis.so', 'logSnapshot' LANGUAGE c;
+
+CREATE OR REPLACE FUNCTION bruce.logtransactiontrigger() RETURNS trigger
+        AS 'elvis.so', 'logTransactionTrigger' LANGUAGE c;
+
+
+-- applylogtransaction2 is called by daemon to apply changes.
+CREATE OR REPLACE FUNCTION bruce.applylogtransaction2(int, int, text, text, text, text) RETURNS boolean
         AS 'elvis.so', 'applyLogTransaction2' LANGUAGE c;
 
-CREATE FUNCTION bruce.set_tightmem(int) RETURNS cstring
+-- this changes some options so that elvis will use somewhat less memory when
+-- there are many many tables. this is not normally needed, so dont use it
+-- unless you know you have memory problems and millions of small tables.
+CREATE OR REPLACE FUNCTION bruce.set_tightmem(int) RETURNS cstring
         AS 'elvis.so', 'set_tightmem' LANGUAGE c;
 
-CREATE FUNCTION bruce.get_xaction() RETURNS bigint
+
+-- functions used for manipulating transactions and ids, whether we are in 8.1 or 8.3
+CREATE OR REPLACE FUNCTION bruce.get_xaction() RETURNS bigint
         AS 'elvis.so', 'get_xaction' LANGUAGE c;
 
-CREATE FUNCTION bruce.get_xaction_highbits() RETURNS bigint
+CREATE OR REPLACE FUNCTION bruce.get_xaction_highbits() RETURNS bigint
         AS 'elvis.so', 'get_xaction_highbits' LANGUAGE c;
 
-CREATE FUNCTION bruce.get_xaction_mask() RETURNS bigint
+CREATE OR REPLACE FUNCTION bruce.get_xaction_mask() RETURNS bigint
         AS 'elvis.so', 'get_xaction_mask' LANGUAGE c;
 
-/*    debug functions */
-CREATE FUNCTION bruce.debug_fakeapplylog(int, int, text, text, text, text) RETURNS cstring
+
+-- undocumented debug functions
+CREATE OR REPLACE FUNCTION bruce.debug_fakeapplylog(int, int, text, text, text, text) RETURNS cstring
         AS 'elvis.so', 'debug_fakeapplylog' LANGUAGE c;
 
-CREATE FUNCTION bruce.debug_setcacheitem(int, int, text, text, text) RETURNS cstring
+CREATE OR REPLACE FUNCTION bruce.debug_setcacheitem(int, int, text, text, text) RETURNS cstring
         AS 'elvis.so', 'debug_setcacheitem' LANGUAGE c;
 
-CREATE FUNCTION bruce.debug_peekcacheitem(int) RETURNS cstring
+CREATE OR REPLACE FUNCTION bruce.debug_peekcacheitem(int) RETURNS cstring
         AS 'elvis.so', 'debug_peekcacheitem' LANGUAGE c;
 
-CREATE FUNCTION bruce.debug_parseinfo(int, text) RETURNS cstring
+CREATE OR REPLACE FUNCTION bruce.debug_parseinfo(int, text) RETURNS cstring
         AS 'elvis.so', 'debug_parseinfo' LANGUAGE c;
 
-CREATE FUNCTION bruce.debug_applyinfo(int, text) RETURNS boolean
+CREATE OR REPLACE FUNCTION bruce.debug_applyinfo(int, text) RETURNS boolean
         AS 'elvis.so', 'debug_applyinfo' LANGUAGE c;
 
-CREATE FUNCTION bruce.debug_echo(int, text) RETURNS cstring
+CREATE OR REPLACE FUNCTION bruce.debug_echo(int, text) RETURNS cstring
         AS 'elvis.so', 'debug_echo' LANGUAGE c;
 
 
+-- helper functions
 
+-- helper function used by default values in currentlog table.
+CREATE OR REPLACE FUNCTION bruce.get_ymdh(
+) RETURNS BIGINT AS $Q$ 
+    select (to_char(now(),'YYYYMMDDHH'))::bigint;
+$Q$ language sql ;
 
+-- log_rotate_xaction_bitmask is used to configure the so; different xaction_mask
+-- can cause elvis to replicate faster.
 CREATE TABLE bruce.log_rotate_xaction_bitmask (
     xaction_mask bigint not null primary key default ( (2^32-1)::bigint # (2^26-1)::bigint ),
     one_row_only boolean not null default true unique,
@@ -82,32 +108,24 @@ GRANT ALL ON bruce.transactionlog_rowseq TO public;
 GRANT ALL ON bruce.snapshotlog_id_seq TO public;
 GRANT ALL ON bruce.currentlog_id_seq TO public;
 
---CREATE OR REPLACE FUNCTION bruce.get_xaction_mask(
---) RETURNS BIGINT AS $Q$ 
---    select (2^26 - 1 )::bigint;
---$Q$ language sql ;
-
-CREATE OR REPLACE FUNCTION bruce.get_ymdh(
-) RETURNS BIGINT AS $Q$ 
-    select (to_char(now(),'YYYYMMDDHH'))::bigint;
-$Q$ language sql ;
 
 CREATE TABLE bruce.currentlog (
-    id                  bigint default nextval('bruce.currentlog_id_seq'::regclass) primary key,
-    xaction_highbits    bigint not null default bruce.get_xaction_highbits(),
-    first_xaction_id    bigint not null default bruce.get_xaction(),
-    first_yyyymmddhh    bigint not null default bruce.get_ymdh(),
-    xaction_mask        bigint not null default bruce.get_xaction_mask(),
-    is_current          boolean not null default true,
-    create_time         timestamp without time zone not null default now()
+    id                  bigint default nextval('bruce.currentlog_id_seq'::regclass) primary key
+    ,create_time         timestamp without time zone not null default now()
+    ,xaction_highbits    bigint not null default bruce.get_xaction_highbits()
+    ,first_xaction_id    bigint not null default bruce.get_xaction()
+    ,first_yyyymmddhh    bigint not null default bruce.get_ymdh()
+    ,xaction_mask        bigint not null default bruce.get_xaction_mask()
+    ,is_current          boolean not null default true
 );
+
 CREATE UNIQUE INDEX currentlog_ak1 on bruce.currentlog ( xaction_highbits ) where is_current = true;
 CREATE UNIQUE INDEX currentlog_ak2 on bruce.currentlog ( is_current ) where is_current = true;
 CREATE UNIQUE INDEX currentlog_ak3 on bruce.currentlog ( xaction_highbits, first_yyyymmddhh ) ;
-
 GRANT select,insert,update ON bruce.currentlog TO public;
-
 SELECT pg_catalog.setval('bruce.currentlog_id_seq', 1, true);
+
+-- create new snapshotlog and transactionlog parent tables
 
 CREATE TABLE bruce.snapshotlog (
                 id BIGINT DEFAULT NEXTVAL('bruce.snapshotlog_id_seq') PRIMARY KEY
@@ -158,7 +176,7 @@ begin
         raise EXCEPTION 'could not rotate logs because currentlog update/insert/select failed to produce the expected row.';
     end if;
     -- now make new tables TODO: add check constraints on them and have them inherit from parent.
-    execute $A$ CREATE TABLE bruce.snapshotlog_$A$ || logid || $B$ (
+    execute $A$ CREATE TABLE bruce.snapshotlog_p$A$ || logid || $B$ (
                 id BIGINT DEFAULT NEXTVAL('bruce.snapshotlog_id_seq'::regclass) PRIMARY KEY
                 ,current_xaction BIGINT UNIQUE
                 ,min_xaction BIGINT NOT NULL
@@ -168,9 +186,8 @@ begin
                 ,currentlog_id BIGINT not null default $B$ || logid || $Z$ 
                 ,check( currentlog_id = $Z$ || logid || $AA$ ) 
                 ) inherits ( bruce.snapshotlog ) $AA$;
-    execute $C$ GRANT INSERT,SELECT ON TABLE bruce.snapshotlog_$C$ || logid || $D$ to public $D$;
-
-    execute $X$ CREATE TABLE bruce.transactionlog_$X$ || logid ||  $Y$ (
+    execute $C$ GRANT INSERT,SELECT ON TABLE bruce.snapshotlog_p$C$ || logid || $D$ to public $D$;
+    execute $X$ CREATE TABLE bruce.transactionlog_p$X$ || logid ||  $Y$ (
         rowid BIGINT DEFAULT NEXTVAL('bruce.transactionlog_rowseq'::regclass) PRIMARY KEY
         ,xaction BIGINT
         ,cmdtype CHARACTER(1)
@@ -180,10 +197,10 @@ begin
         ,check( currentlog_id = $Z$ || logid || $AA$ ) 
         ) inherits (bruce.transactionlog) $AA$
         ;
-    execute $G$ CREATE UNIQUE INDEX transactionlog_$G$ || logid || 
-        $H$_i0 ON bruce.transactionlog_$H$ || logid || 
+    execute $G$ CREATE UNIQUE INDEX transactionlog_p$G$ || logid || 
+        $H$_i0 ON bruce.transactionlog_p$H$ || logid || 
         $I$ ( xaction, rowid ) $I$;
-    execute $E$ GRANT INSERT,SELECT ON TABLE bruce.transactionlog_$E$ || logid || 
+    execute $E$ GRANT INSERT,SELECT ON TABLE bruce.transactionlog_p$E$ || logid || 
         $F$ to public $F$;
     return logid;
 end;
