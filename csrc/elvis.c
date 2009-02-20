@@ -968,7 +968,7 @@ Datum logSnapshot(PG_FUNCTION_ARGS) {
     }
     /* build out the insert statement */
     sprintf(query,
-	    "insert into bruce.snapshotlog_%s (current_xaction,min_xaction,max_xaction,outstanding_xactions) values ($1,$2,$3,$4);",
+	    "insert into bruce.snapshotlog_p%s (current_xaction,min_xaction,max_xaction,outstanding_xactions) values ($1,$2,$3,$4);",
 	    getCurrentLogId(NULL));
     
     plan_types[0]=INT8OID;
@@ -1248,7 +1248,7 @@ void insertTransactionLog(char *cmd_type,char *schema,char *table,Datum row_data
     if(didChange == 1 ){
 
         snprintf(buf, STACK_STRING_SIZE-1,
-            "insert into bruce.transactionlog_%s(xaction,cmdtype,tabname,info)values($1,$2,$3,$4);",
+            "insert into bruce.transactionlog_p%s(xaction,cmdtype,tabname,info)values($1,$2,$3,$4);",
             table_id
         );
         plan_types[0]=INT8OID;
