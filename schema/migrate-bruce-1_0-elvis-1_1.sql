@@ -1,3 +1,42 @@
+
+-- create function that delivers returns a table rotation id, rotating if needed.
+CREATE OR REPLACE FUNCTION bruce.migration_rotate() RETURNS VOID AS $Q$ 
+declare
+    clog record ;
+begin
+    raise notice 'bruce.migration_rotate(): top %', now();
+    execute $A$select bruce.logsnapshot()$A$;
+    begin
+        execute $A$DROP TABLE bruce.transactionlog_elvis1x $A$ ;
+    exception when undefined_table then
+        -- do nothing
+    end;
+    begin
+        execute $A$DROP TABLE bruce.snapshotlog_elvis1x $A$ ;
+    exception when undefined_table then
+        -- do nothing
+    end;
+
+    for clog in select * from bruce.currentlog order by id loop
+        begin
+            execute $A$DROP INDEX bruce.snapshotlog_$A$ || clog.id || $B$_i0 $B$ ;
+        exception when undefined_object then
+            -- do nothing
+        end;
+        raise notice 'bruce.migration_rotate(): creating index on snapshotlog_% at %', clog.id, now();
+        execute $A$create index snapshotlog_$A$ || clog.id || $B$_i0 on bruce.snapshotlog_$B$ || clog.id || $C$ (update_time)$C$ ;
+    end loop;
+    raise notice 'bruce.migration_rotate(): starting backup of transactionlog top 100000 at %', now();
+    execute $A$CREATE TABLE bruce.transactionlog_elvis1x as select * from bruce.transactionlog order by rowid desc limit 100000 $A$ ;
+    raise notice 'bruce.migration_rotate(): starting backup of snapshotlog top 10000 at %', now();
+    execute $A$CREATE TABLE bruce.snapshotlog_elvis1x as select * from bruce.snapshotlog order by update_time desc limit 10000 $A$ ;
+    raise notice 'bruce.migration_rotate(): done backup of recent snapshots and transactions at %', now();
+end;
+$Q$ language plpgsql ;
+
+select bruce.migration_rotate();
+
+
 UPDATE bruce.replication_version set major = 2, minor = 0, patch = 0, name =  'Elvis 2.0.0' ;
 
 -- the commented out functions here can be run from either the old bruce.so or the new shared object.
@@ -123,13 +162,6 @@ GRANT select,insert,update ON bruce.currentlog TO public;
 SELECT pg_catalog.setval('bruce.currentlog_id_seq', 1, true);
 
 -- create new snapshotlog and transactionlog parent tables
-
-CREATE TABLE bruce.snapshotlog_elvis1x as 
-    select * 
-    from bruce.snapshotlog 
-    where update_time > now() - '1 hour'::interval 
-    order by current_xaction desc ;
-
 DROP VIEW bruce.snapshotlog;
 CREATE TABLE bruce.snapshotlog (
                 id BIGINT DEFAULT NEXTVAL('bruce.snapshotlog_id_seq') PRIMARY KEY
@@ -141,11 +173,6 @@ CREATE TABLE bruce.snapshotlog (
                 ,currentlog_id BIGINT NOT NULL default -1
                 );
 GRANT INSERT,SELECT ON TABLE bruce.snapshotlog to public ;
-
-CREATE TABLE bruce.transactionlog_elvis1x as 
-    select * from bruce.transactionlog where xaction + 100000 > bruce.get_xaction() order by xaction desc limit 200000;
-
-        -- xaction > bruce.get_xaction() - '100000'::bigint and  
 
 DROP VIEW bruce.transactionlog ;
 CREATE TABLE bruce.transactionlog (
@@ -159,6 +186,7 @@ CREATE TABLE bruce.transactionlog (
         ;
 GRANT INSERT,SELECT ON TABLE bruce.transactionlog to public ;
 
+INSERT INTO bruce.snapshotlog select current_xaction,min_xaction,max_xaction,outstanding_xactions,update_time from bruce.snapshotlog_elvis1x ;
 INSERT INTO bruce.transactionlog select rowid,xaction,cmdtype,tabname,info from bruce.transactionlog_elvis1x ;
 
 -- create function that delivers returns a table rotation id, rotating if needed.
