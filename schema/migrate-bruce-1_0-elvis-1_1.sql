@@ -143,7 +143,7 @@ GRANT ALL ON bruce.currentlog_id_seq TO public;
 
 
 -- migrate currentlog table 
-ALTER TABLE bruce.currentlog rename to bruce.currentlog_elvis1x ;
+ALTER TABLE bruce.currentlog rename to currentlog_elvis1x ;
 
 CREATE TABLE bruce.currentlog (
     id                  bigint default nextval('bruce.currentlog_id_seq'::regclass) primary key
@@ -186,8 +186,8 @@ CREATE TABLE bruce.transactionlog (
         ;
 GRANT INSERT,SELECT ON TABLE bruce.transactionlog to public ;
 
-INSERT INTO bruce.snapshotlog select current_xaction,min_xaction,max_xaction,outstanding_xactions,update_time from bruce.snapshotlog_elvis1x ;
-INSERT INTO bruce.transactionlog select rowid,xaction,cmdtype,tabname,info from bruce.transactionlog_elvis1x ;
+INSERT INTO bruce.snapshotlog (current_xaction,min_xaction,max_xaction,outstanding_xactions,update_time ) select current_xaction,min_xaction,max_xaction,outstanding_xactions,update_time from bruce.snapshotlog_elvis1x ;
+INSERT INTO bruce.transactionlog (  rowid,xaction,cmdtype,tabname,info  )select rowid,xaction,cmdtype,tabname,info from bruce.transactionlog_elvis1x ;
 
 -- create function that delivers returns a table rotation id, rotating if needed.
 CREATE OR REPLACE FUNCTION bruce.get_rotate_id() RETURNS pg_class.relname%TYPE AS $Q$ 
