@@ -1,3 +1,6 @@
+WARNING: this is an early design document, and differs in significant ways
+from the current implemntation. 
+
 Goal:
  * Try for message complexity f(n) (vs slony's f(n^2))
  * Retain slony ideas around transaction capture (quite elegant)
